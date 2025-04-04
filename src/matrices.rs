@@ -93,8 +93,7 @@ impl CsrMatrix {
             sum
         }).collect()
     }
-
-
+    
 
     /// Check whether two CSR matrices are the same
     pub fn are_csr_matrices_equal(&self, matrix2: &CsrMatrix) -> bool {

@@ -61,10 +61,12 @@ pub fn main_loop(
     for _ in seq.len()..max_nlen {
         // Multiply the matrix A with the vector curv
         // println!(".");
+        // let tmpv_result = a.parallel_sparse_matvec_mul_optimized(curv, theprime);
         let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
         //tmpv.copy_from_slice(&tmpv_result);
         // println!("..");
         // Multiply the matrix At with the vector tmpv
+        // let curv_result = at.parallel_sparse_matvec_mul_optimized(&tmpv_result, theprime);
         let curv_result = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
         curv.copy_from_slice(&curv_result);
         // println!("...");
