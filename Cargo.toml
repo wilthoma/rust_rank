@@ -1,0 +1,10 @@
+[package]
+name = "rust_rank"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand = "0.9.0"
+rayon = "1.7"
+clap = { version = "4.0", features = ["derive"] }
+bubblemath = "0.1"
