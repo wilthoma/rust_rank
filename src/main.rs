@@ -1,3 +1,6 @@
+
+// #![feature(portable_simd)]
+
 mod matrices;
 mod wdm_files;
 use matrices::{CsrMatrix, MyInt, load_csr_matrix_from_sms, create_random_vector, create_random_vector_nozero};
@@ -62,11 +65,13 @@ pub fn main_loop(
         // Multiply the matrix A with the vector curv
         // println!(".");
         // let tmpv_result = a.parallel_sparse_matvec_mul_optimized(curv, theprime);
+        // let tmpv_result = a.parallel_csr_matvec_mul_simd_preload::<8>(curv, theprime);
         let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
         //tmpv.copy_from_slice(&tmpv_result);
         // println!("..");
         // Multiply the matrix At with the vector tmpv
         // let curv_result = at.parallel_sparse_matvec_mul_optimized(&tmpv_result, theprime);
+        // let curv_result = at.parallel_csr_matvec_mul_simd_preload::<8>(&tmpv_result, theprime);
         let curv_result = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
         curv.copy_from_slice(&curv_result);
         // println!("...");

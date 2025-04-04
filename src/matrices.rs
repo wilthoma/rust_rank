@@ -3,6 +3,7 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::{self, BufRead};
 use rand::Rng;
+// use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
 pub type MyInt = i64;
 
@@ -14,6 +15,12 @@ pub struct CsrMatrix {
     pub n_rows: usize,           // Number of rows
     pub n_cols: usize,           // Number of columns
 }
+
+// #[inline]
+// fn mod_mul(a: i64, b: i64, p: i64) -> i64 {
+//     let result = (a as i128 * b as i128) % p as i128;
+//     ((result + p as i128) % p as i128) as i64
+// }
 
 impl CsrMatrix {
     /// Transposes the CSR matrix
@@ -94,6 +101,62 @@ impl CsrMatrix {
         }).collect()
     }
     
+
+
+    // /// SIMD-enhanced CSR matrix-vector multiplication with vector preloading
+    // pub fn parallel_csr_matvec_mul_simd_preload<const LANES: usize>(
+    //     &self,
+    //     vector: &[MyInt],
+    //     theprime: MyInt
+    // ) -> Vec<MyInt>
+    // where
+    //     core::simd::LaneCount<LANES>: core::simd::SupportedLaneCount,
+    // {
+    //     let matrix = self;
+    //     assert_eq!(matrix.n_cols, vector.len(), "Dimension mismatch");
+
+       
+    //     (0..matrix.n_rows).into_par_iter()
+    //     .map(|row| {
+    //         let start = matrix.row_ptr[row];
+    //         let end = matrix.row_ptr[row + 1];
+    //         let nnz = end - start;
+
+    //         // Preload relevant vector values into contiguous buffer
+    //         let preload: Vec<i64> = matrix.col_indices[start..end]
+    //             .iter()
+    //             .map(|&col| vector[col])
+    //             .collect();
+
+    //         let mut sum = 0i64;
+    //         let mut i = 0;
+
+    //         while i + LANES <= nnz {
+    //             let val_simd = Simd::<i64, LANES>::from_slice(&matrix.values[start + i..start + i + LANES]);
+    //             let vec_simd = Simd::<i64, LANES>::from_slice(&preload[i..i + LANES]);
+
+    //             // SIMD modular multiplication (cast to i128 for safety)
+    //             let prod_simd = (val_simd.cast::<i128>() * vec_simd.cast::<i128>()) % Simd::splat(p as i128);
+
+    //             // Correct negatives: (x % p + p) % p
+    //             let corrected = (prod_simd + Simd::splat(p as i128)) % Simd::splat(p as i128);
+                
+    //             sum = (sum + corrected.reduce_sum() as i64) % p;
+    //             i += LANES;
+    //         }
+
+    //         // Tail loop for remaining elements
+    //         while i < nnz {
+    //             sum = (sum + mod_mul(matrix.values[start + i], preload[i], p)) % p;
+    //             i += 1;
+    //         }
+
+    //         // Ensure sum is in range [0, P-1]
+    //         (sum + p) % p
+    //     })
+    //     .collect()
+    // }
+
 
     /// Check whether two CSR matrices are the same
     pub fn are_csr_matrices_equal(&self, matrix2: &CsrMatrix) -> bool {
