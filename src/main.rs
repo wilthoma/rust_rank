@@ -96,7 +96,7 @@ pub fn main_loop(
         // let tmpv_result = a.parallel_sparse_matvec_mul_optimized(curv, theprime);
         // let tmpv_result = a.parallel_csr_matvec_mul_simd_preload::<8>(curv, theprime);
         // let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
-        let tmpv_result = curv_result.iter().map(|tcurv| {
+        let tmpv_result = curv_result.par_iter().map(|tcurv| {
             a.parallel_sparse_matvec_mul(tcurv, theprime)
         }).collect::<Vec<_>>();
 
@@ -106,7 +106,7 @@ pub fn main_loop(
         // Multiply the matrix At with the vector tmpv
         // let curv_result = at.parallel_sparse_matvec_mul_optimized(&tmpv_result, theprime);
         // let curv_result = at.parallel_csr_matvec_mul_simd_preload::<8>(&tmpv_result, theprime);
-        curv_result = tmpv_result.iter().map(|ttcurv| {
+        curv_result = tmpv_result.par_iter().map(|ttcurv| {
             at.parallel_sparse_matvec_mul(ttcurv, theprime)
         }).collect::<Vec<_>>();
 
@@ -115,11 +115,11 @@ pub fn main_loop(
         // curv.copy_from_slice(&curv_result);
         // println!("...");
         // Compute the dot product of u and curv
-        let dot_products = (0..num_u*num_v).into_iter().map(|ii| {
+        let dot_products = (0..num_u*num_v).into_par_iter().map(|ii| {
             let i = ii % num_u;
             let j = ii / num_u;
             // curv_result[i][j] = (curv_result[i][j] + u[i][j] * v[j][i]) % theprime;
-            dot_product_mod_p(&u[i], &v[j], theprime)
+            dot_product_mod_p(&u[i], &curv_result[j], theprime)
         }).collect::<Vec<_>>();
         // push to seq
         for ii in 0..num_u*num_v {
@@ -145,6 +145,7 @@ pub fn main_loop(
             last_nlen = seq[0].len();
         }
     }
+    // copy curv_result to curv
     *curv = curv_result.clone();
     Ok(())
 }

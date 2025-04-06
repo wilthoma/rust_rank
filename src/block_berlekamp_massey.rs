@@ -101,7 +101,7 @@ fn lcm_polynomials(polys: &[Vec<MyInt>], P : MyInt) -> Vec<MyInt> {
 
 
 pub fn block_berlekamp_massey(seq: Vec<Vec<MyInt>>, num_u:usize, num_v:usize, p:MyInt) -> Vec<MyInt> {
-    if num_v >1 {
+    if num_v >1 || num_u > 1{
         println!("Warning: Matrix Berlekamp Massey is not yet implemented. We just take least common multiple of minimal poly of all sequences.");
     }
 
@@ -111,6 +111,9 @@ pub fn block_berlekamp_massey(seq: Vec<Vec<MyInt>>, num_u:usize, num_v:usize, p:
     let bmres: Vec<Vec<u64>> = useq.iter().map(|s| bubblemath::linear_recurrence::berlekamp_massey(s, p as u64))
         .collect();
 
+    for v in bmres.iter(){
+        println!("BM individual length: {}", v.len())  ;
+    }
 
     // convert back to MyInt
     let bmres: Vec<Vec<MyInt>> = bmres.iter().map(|s| s.iter().map(|&x| x as MyInt).collect()).collect();
