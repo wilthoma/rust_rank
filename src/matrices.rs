@@ -3,6 +3,10 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::{self, BufRead};
 use rand::Rng;
+use std::cmp::Ordering;
+use image::{ImageBuffer, Luma};
+use std::path::Path;
+
 // use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
 pub type MyInt = i64;
@@ -83,24 +87,46 @@ impl CsrMatrix {
     }
 
     /// Multiply a sparse CSR matrix with a dense vector in parallel
-    pub fn parallel_sparse_matvec_mul(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+    pub fn parallel_sparse_matvec_mul2(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
         let matrix = self;
         assert_eq!(matrix.n_cols, vector.len(), "Matrix and vector dimensions must align.");
 
         // Parallel iterator over rows
-        (0..matrix.n_rows).into_par_iter().map(|row| {
-            let start = matrix.row_ptr[row];
-            let end = matrix.row_ptr[row + 1];
+        let chunk_size = 512; // Tune this!
+        (0..matrix.n_rows)
+            .collect::<Vec<_>>() // optional: maybe even better with work-stealing
+            .par_chunks(chunk_size)
+            .flat_map_iter(|rows| {
+                rows.iter().map(|&row| {
+                    let start = matrix.row_ptr[row];
+                    let end = matrix.row_ptr[row + 1];
+                    let mut sum: MyInt = 0;
+                    for i in start..end {
+                        let col = matrix.col_indices[i];
+                        sum = (sum + matrix.values[i] * vector[col]) % theprime;
+                    }
+                    sum
+                })
+            })
+            .collect()
+    }
+    
+    pub fn parallel_sparse_matvec_mul(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+
+        // Parallel iterator over rows
+        (0..self.n_rows).into_par_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
 
             let mut sum: MyInt = 0;
             for i in start..end {
-                let col = matrix.col_indices[i];
-                sum = (sum + matrix.values[i] * vector[col]) % theprime;
+                let col = self.col_indices[i];
+                sum = (sum + self.values[i] * vector[col]) % theprime;
             }
             sum
         }).collect()
     }
-    
 
 
     // /// SIMD-enhanced CSR matrix-vector multiplication with vector preloading
@@ -204,6 +230,16 @@ impl CsrMatrix {
 
 }
 
+/// Compute the dot product of two vectors modulo `p`
+pub fn dot_product_mod_p(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
+    assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
+
+    vec1.iter()
+        .zip(vec2.iter())
+        .fold(0, |acc, (&x, &y)| (acc + (x * y) ) % p)
+        // .fold(0, |acc, (&x, &y)| (acc + (x * y) % p) % p)
+
+}
 
 
 /// Load a sparse matrix in SMS format from a file
@@ -278,4 +314,99 @@ pub fn create_random_vector(length: usize, theprime: MyInt) -> Vec<MyInt> {
 pub fn create_random_vector_nozero(length: usize, theprime: MyInt) -> Vec<MyInt> {
     let mut rng = rand::rng();
     (0..length).map(|_| rng.random_range(1..theprime)).collect()
+}
+
+
+pub fn reorder_csr_matrix_by_keys(
+    matrix: &CsrMatrix,
+    row_keys: &[usize],
+    col_keys: &[usize],
+) -> CsrMatrix {
+    assert_eq!(matrix.n_rows, row_keys.len());
+    assert_eq!(matrix.n_cols, col_keys.len());
+
+    // Compute row and column permutations based on sorting the keys
+    let mut row_order: Vec<usize> = (0..matrix.n_rows).collect();
+    let mut col_order: Vec<usize> = (0..matrix.n_cols).collect();
+
+    row_order.sort_by(|&i, &j| row_keys[i].cmp(&row_keys[j]));
+    col_order.sort_by(|&i, &j| col_keys[i].cmp(&col_keys[j]));
+
+    // Inverse maps from old index -> new index
+    let mut row_inv = vec![0; matrix.n_rows];
+    let mut col_inv = vec![0; matrix.n_cols];
+    for (new_idx, &old_idx) in row_order.iter().enumerate() {
+        row_inv[old_idx] = new_idx;
+    }
+    for (new_idx, &old_idx) in col_order.iter().enumerate() {
+        col_inv[old_idx] = new_idx;
+    }
+
+    let mut new_values = Vec::new();
+    let mut new_col_indices = Vec::new();
+    let mut new_row_ptr = Vec::with_capacity(matrix.n_rows + 1);
+    new_row_ptr.push(0);
+
+    // Rebuild matrix using new row and column order
+    for &old_row in &row_order {
+        let start = matrix.row_ptr[old_row];
+        let end = matrix.row_ptr[old_row + 1];
+        let mut row_entries: Vec<(usize, MyInt)> = Vec::new();
+
+        for idx in start..end {
+            let old_col = matrix.col_indices[idx];
+            let new_col = col_inv[old_col];
+            row_entries.push((new_col, matrix.values[idx]));
+        }
+
+        row_entries.sort_by_key(|&(col, _)| col);
+
+        for (col, val) in row_entries {
+            new_col_indices.push(col);
+            new_values.push(val);
+        }
+
+        new_row_ptr.push(new_values.len());
+    }
+
+    CsrMatrix {
+        values: new_values,
+        col_indices: new_col_indices,
+        row_ptr: new_row_ptr,
+        n_rows: matrix.n_rows,
+        n_cols: matrix.n_cols,
+    }
+}
+
+
+pub fn spy_plot(
+    matrix: &CsrMatrix,
+    filename: &str,
+    height: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Compute width based on matrix aspect ratio
+    let width = ((matrix.n_cols as f32 / matrix.n_rows as f32) * height as f32).ceil() as u32;
+
+    let mut img = ImageBuffer::<Luma<u8>, Vec<u8>>::from_pixel(width, height, Luma([255u8]));
+
+    let row_scale = matrix.n_rows as f32 / height as f32;
+    let col_scale = matrix.n_cols as f32 / width as f32;
+
+    for row in 0..matrix.n_rows {
+        let start = matrix.row_ptr[row];
+        let end = matrix.row_ptr[row + 1];
+        for idx in start..end {
+            let col = matrix.col_indices[idx];
+
+            let x = (col as f32 / col_scale).floor() as u32;
+            let y = (row as f32 / row_scale).floor() as u32;
+
+            if x < width && y < height {
+                img.put_pixel(x, height - 1 - y, Luma([0u8]));
+            }
+        }
+    }
+
+    img.save(Path::new(filename))?;
+    Ok(())
 }

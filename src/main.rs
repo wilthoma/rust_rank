@@ -2,13 +2,17 @@
 // #![feature(portable_simd)]
 
 mod matrices;
+mod graphs;
 mod wdm_files;
-use matrices::{CsrMatrix, MyInt, load_csr_matrix_from_sms, create_random_vector, create_random_vector_nozero};
-use wdm_files::{save_wdm_file, load_wdm_file};
-
+mod block_berlekamp_massey;
+use block_berlekamp_massey::block_berlekamp_massey;
+use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
+use wdm_files::{save_wdm_file2, load_wdm_file2};
+use graphs::count_triangles_in_file;
 use std::io::Write;
 use clap::{Arg, Command};
 use std::cmp::min;
+use rayon::prelude::*;
 
 // type MyInt = i64;
 
@@ -16,6 +20,28 @@ const THEPRIME: MyInt = 27644437; // A large prime number for modular arithmetic
 
 const REPORT_AFTER: f64 = 1.0; // seconds
 
+fn reorder_matrix(a: &CsrMatrix, rowfilename: &str, colfilename: &str) -> CsrMatrix {
+    // plot original sparsity patter
+    let start_time = std::time::Instant::now();
+    _ = spy_plot(a, "data/sparsity_pattern0.png", 800).unwrap();
+    println!("Time taken for spy_plot: {:?}", start_time.elapsed());
+
+    let start_time = std::time::Instant::now();
+    let v1 = count_triangles_in_file(rowfilename).unwrap();
+    println!("Time taken for count_triangles_in_file (gra12_9.g6): {:?}", start_time.elapsed());
+
+    let start_time = std::time::Instant::now();
+    let v2 = count_triangles_in_file(colfilename).unwrap();
+    println!("Time taken for count_triangles_in_file (gra11_9.g6): {:?}", start_time.elapsed());
+
+    let start_time = std::time::Instant::now();
+    let b = reorder_csr_matrix_by_keys(&a, &v1, &v2);
+    println!("Time taken for reorder_csr_matrix_by_keys: {:?}", start_time.elapsed());
+
+    spy_plot(&b, "data/sparsity_pattern1.png", 800);
+
+    b
+}
 
 
 pub fn report_progress(
@@ -46,10 +72,10 @@ pub fn main_loop(
     at: &CsrMatrix,
     row_precond: &[MyInt],
     col_precond: &[MyInt],
-    curv: &mut Vec<MyInt>,
-    u: &[MyInt],
-    v: &[MyInt],
-    seq: &mut Vec<MyInt>,
+    curv: &mut Vec<Vec<MyInt>>,
+    u: &Vec<Vec<MyInt>>,
+    v: &Vec<Vec<MyInt>>,
+    seq: &mut Vec<Vec<MyInt>>,
     max_nlen: usize,
     wdm_filename: &str,
     theprime: MyInt,
@@ -58,43 +84,68 @@ pub fn main_loop(
     let start = std::time::Instant::now();
     let mut last_save = start;
     let mut last_report = start;
-    let mut last_nlen = seq.len();
+    let mut last_nlen = seq[0].len();
+    let mut curv_result  = curv.clone();
     //let mut tmpv = vec![0; a.n_rows];
+    let num_u = u.len();
+    let num_v = v.len();
 
-    for _ in seq.len()..max_nlen {
+    for _ in seq[0].len()..max_nlen {
         // Multiply the matrix A with the vector curv
         // println!(".");
         // let tmpv_result = a.parallel_sparse_matvec_mul_optimized(curv, theprime);
         // let tmpv_result = a.parallel_csr_matvec_mul_simd_preload::<8>(curv, theprime);
-        let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
+        // let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
+        let tmpv_result = curv_result.iter().map(|tcurv| {
+            a.parallel_sparse_matvec_mul(tcurv, theprime)
+        }).collect::<Vec<_>>();
+
+        // ) a.parallel_sparse_matvec_mul(&curv_result, theprime);
         //tmpv.copy_from_slice(&tmpv_result);
         // println!("..");
         // Multiply the matrix At with the vector tmpv
         // let curv_result = at.parallel_sparse_matvec_mul_optimized(&tmpv_result, theprime);
         // let curv_result = at.parallel_csr_matvec_mul_simd_preload::<8>(&tmpv_result, theprime);
-        let curv_result = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
-        curv.copy_from_slice(&curv_result);
+        curv_result = tmpv_result.iter().map(|ttcurv| {
+            at.parallel_sparse_matvec_mul(ttcurv, theprime)
+        }).collect::<Vec<_>>();
+
+        // curv_result = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
+        // curv = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
+        // curv.copy_from_slice(&curv_result);
         // println!("...");
         // Compute the dot product of u and curv
-        let dot_product = u.iter().zip(curv.iter()).fold(0, |acc, (&ui, &curvi)| (acc + ui * curvi) % theprime);
-        seq.push(dot_product);
+        let dot_products = (0..num_u*num_v).into_iter().map(|ii| {
+            let i = ii % num_u;
+            let j = ii / num_u;
+            // curv_result[i][j] = (curv_result[i][j] + u[i][j] * v[j][i]) % theprime;
+            dot_product_mod_p(&u[i], &v[j], theprime)
+        }).collect::<Vec<_>>();
+        // push to seq
+        for ii in 0..num_u*num_v {
+            seq[ii].push(dot_products[ii]);
+        }
+
+        // let dot_product = u.iter().zip(curv.iter()).fold(0, |acc, (&ui, &curvi)| (acc + ui * curvi) % theprime);
+        // seq.push(dot_product);
         // println!("....");
         if last_save.elapsed().as_secs_f64() > save_after as f64 {
             println!("\nSaving...");
             let save_start = std::time::Instant::now();
-            save_wdm_file(&wdm_filename, &a, theprime, &row_precond, &col_precond, &u, &v, &curv, &seq)?;
+            // save_wdm_file(&wdm_filename, &a, theprime, &row_precond, &col_precond, &u, &v, &curv, &seq)?;
+            save_wdm_file2(&wdm_filename, &a, theprime, &row_precond, &col_precond, &u, &v, &curv_result, &seq)?;
             last_save = std::time::Instant::now();
-            println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq.len(), save_start.elapsed());
+            println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
         }
 
         if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
             // println!("Report");
-            report_progress(start, last_report, last_nlen, seq.len(), max_nlen);
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen);
             last_report = std::time::Instant::now();
-            last_nlen = seq.len();
+            last_nlen = seq[0].len();
         }
     }
-
+    *curv = curv_result.clone();
     Ok(())
 }
 
@@ -154,6 +205,24 @@ fn main() {
                 .value_name("PRIME")
                 .default_value("27644437"),
         )
+        .arg(
+            Arg::new("num_u")
+                .short('u')
+                .long("num_u")
+                .help("The number of columns in the U matrix.")
+                .value_parser(clap::value_parser!(usize))
+                .value_name("NUMU")
+                .default_value("1"),
+        )
+        .arg(
+            Arg::new("num_v")
+                .short('v')
+                .long("num_v")
+                .help("The number of columns in the V matrix.")
+                .value_parser(clap::value_parser!(usize))
+                .value_name("NUMV")
+                .default_value("1"),
+        )
         .get_matches();
 
     let filename = matches.get_one::<String>("filename").expect("Filename is required");
@@ -162,8 +231,8 @@ fn main() {
     let mut prime: MyInt = *matches.get_one::<MyInt>("prime").unwrap_or(&THEPRIME);
     let mut max_nlen: usize = *matches.get_one::<usize>("maxnlen").unwrap_or(&0) as usize;
     let save_after: usize = *matches.get_one::<usize>("saveafter").unwrap_or(&200);
-
-    println!("Overwrite: {}", overwrite);
+    let mut num_u: usize = *matches.get_one::<usize>("num_u").unwrap_or(&1);
+    let mut num_v: usize = *matches.get_one::<usize>("num_v").unwrap_or(&1);
 
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
@@ -175,48 +244,59 @@ fn main() {
 
     let start_time = std::time::Instant::now();
     let mut a = load_csr_matrix_from_sms(filename).expect("Failed to load matrix");
+    // let mut a = reorder_matrix(&a, "data/gra12_9.g6", "data/gra11_9.g6");
     let duration = start_time.elapsed();
     println!("Time taken to load matrix: {:?}", duration);
     println!("Loaded matrix with {} rows and {} columns", a.n_rows, a.n_cols);
-    if max_nlen <=0 {
-        max_nlen = 2* min(a.n_cols, a.n_rows);
-    }
     let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
     let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
-    let mut u: Vec<MyInt> = create_random_vector(a.n_cols, prime);
-    let mut v: Vec<MyInt> = create_random_vector(a.n_cols, prime);
-    let mut curv: Vec<MyInt> = v.clone();
-    let mut seq: Vec<MyInt> = Vec::new();
+    let mut u: Vec<Vec<MyInt>> = (0..num_u).map(|_| create_random_vector(a.n_cols, prime)).collect();
+    let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
+    let mut curv: Vec<Vec<MyInt>> = v.clone();
+    let mut seq: Vec<Vec<MyInt>> = (0..num_u*num_v).map(|_| Vec::new()).collect();
 
     let wdm_filename = format!("{}.wdm", filename); 
     // check if exists
     if std::path::Path::new(&wdm_filename).exists() && !overwrite {
         println!("Loading state from file {}...", &wdm_filename);
-        prime = load_wdm_file(&wdm_filename, &a, &mut row_precond, &mut col_precond, &mut u, &mut v, &mut curv, &mut seq).unwrap();
+        let (tprime, tm, tn, tnum_u, tnum_v) = load_wdm_file2(&wdm_filename, &mut row_precond, &mut col_precond, &mut u, &mut v, &mut curv, &mut seq).unwrap();
+        prime = tprime;
+        if tm != a.n_rows || tn != a.n_cols {
+            println!("Matrix dimensions do not match! {}x{} vs {}x{}", tm, tn, a.n_rows, a.n_cols);
+            std::process::exit(1);
+        }
+        num_u = tnum_u;
+        num_v = tnum_v;
+        println!("Loaded state from file {} with {} entries. Note: parameteer in wdm file take precedence over those passed via command line,", &wdm_filename, seq[0].len());
     } else {
 
     }
+    // compute desired sequence length if none was provided
+    if max_nlen <=0 {
+        let d = min(a.n_cols, a.n_rows) as f32;
+        max_nlen =  (d/(num_u as f32) + d/(num_v as f32) + 1.0).floor() as usize; // 2* min(a.n_cols, a.n_rows);
+    }
 
     // Check if already done with sequence computation
-    if max_nlen > 0 && seq.len() >= max_nlen {
-        println!("Already computed {} entries, nothing to do.", seq.len());
+    if max_nlen > 0 && seq[0].len() >= max_nlen {
+        println!("Already computed {} entries, nothing to do.", seq[0].len());
 
     } else {
         println!{"Preconditioning matrix ..."}
         // precondition matrix
         let mut at = a.transpose(); //transpose_csr_matrix(&a);
-        let att = at.transpose(); // transpose_csr_matrix(&at);
-        if a.are_csr_matrices_equal( &att){
-            println!("Yeah");
-            // a.print_triplets();
-            // at.print_triplets();
-            // att.print_triplets();
-        } else {
-            println!("Boooooo");
-            // a.print_triplets();
-            // at.print_triplets();
-            // att.print_triplets();
-        }
+        // let att = at.transpose(); // transpose_csr_matrix(&at);
+        // if a.are_csr_matrices_equal( &att){
+        //     println!("Yeah");
+        //     // a.print_triplets();
+        //     // at.print_triplets();
+        //     // att.print_triplets();
+        // } else {
+        //     println!("Boooooo");
+        //     // a.print_triplets();
+        //     // at.print_triplets();
+        //     // att.print_triplets();
+        // }
         // println!("scaling a");
     
         a.scale_csr_matrix_rows(&row_precond, prime);
@@ -232,17 +312,18 @@ fn main() {
             eprintln!("Error in main loop: {}", e);
             std::process::exit(1);
         } else {
-            save_wdm_file(&wdm_filename, &a, prime, &row_precond, &col_precond, &u, &v, &curv, &seq).expect("Couldn't save result...");
-            println!("\nSaved state to file {} at sequence length {}.", wdm_filename, seq.len());
+            save_wdm_file2(&wdm_filename, &a, prime, &row_precond, &col_precond, &u, &v, &curv, &seq).expect("Couldn't save result...");
+            println!("\nSaved state to file {} at sequence length {}.", wdm_filename, seq[0].len());
         }
     }
 
     
     // convert seq to a vector of u64
     println!("Sequence computed, running Berlekamp-Massey...");
-    let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
+    // let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
     let start_time = std::time::Instant::now();
-    let bmres = bubblemath::linear_recurrence::berlekamp_massey(&useq, prime as u64);
+    let bmres = block_berlekamp_massey(seq, num_u, num_v, prime);
+    // let bmres: Vec<u64> = bubblemath::linear_recurrence::berlekamp_massey(&useq, prime as u64);
     let duration = start_time.elapsed();
     println!("Time taken for Berlekamp-Massey: {:?}", duration);
     println!("Berlekamp-Massey result: {:?}", bmres.len());
