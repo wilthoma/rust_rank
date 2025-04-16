@@ -113,17 +113,22 @@ impl CsrMatrix {
     
     pub fn parallel_sparse_matvec_mul(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
         assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
-
+        // const ttheprime :MyInt = 27644437;
         // Parallel iterator over rows
         (0..self.n_rows).into_par_iter().map(|row| {
             let start = self.row_ptr[row];
             let end = self.row_ptr[row + 1];
 
-            let mut sum: MyInt = 0;
-            for i in start..end {
-                let col = self.col_indices[i];
-                sum = (sum + self.values[i] * vector[col]) % theprime;
-            }
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let sum = colis
+                .zip(&self.values[start..end])
+                .map(|(v, &val)| (v * val) )
+                .fold(0, |acc, x| (acc + x)) % theprime ;
+            // let mut sum: MyInt = 0;;
+            // for i in start..end {
+            //     let col = self.col_indices[i];
+            //     sum = (sum + self.values[i] * vector[col]) % theprime;
+            // }
             sum
         }).collect()
     }
