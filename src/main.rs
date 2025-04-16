@@ -16,7 +16,7 @@ use rayon::prelude::*;
 
 // type MyInt = i64;
 
-const THEPRIME: MyInt = 27644437; // A large prime number for modular arithmetic
+const THEPRIME: MyInt = 27644437 as MyInt; // A large prime number for modular arithmetic
 
 const REPORT_AFTER: f64 = 1.0; // seconds
 
@@ -96,8 +96,12 @@ pub fn main_loop(
         // let tmpv_result = a.parallel_sparse_matvec_mul_optimized(curv, theprime);
         // let tmpv_result = a.parallel_csr_matvec_mul_simd_preload::<8>(curv, theprime);
         // let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
-        let tmpv_result = curv_result.par_iter().map(|tcurv| {
-            a.parallel_sparse_matvec_mul(tcurv, theprime)
+        let tmpv_result = curv_result.iter().map(|tcurv| {
+        // let tmpv_result = curv_result.par_iter().map(|tcurv| {
+            // a.serial_sparse_matvec_mul(tcurv, theprime)
+            // a.serial_sparse_matvec_mul_chunk(tcurv, theprime)
+            serial_sparse_matvec_mul_chunk2(&a,tcurv, theprime)
+            // a.parallel_sparse_matvec_mul(tcurv, theprime)
         }).collect::<Vec<_>>();
 
         // ) a.parallel_sparse_matvec_mul(&curv_result, theprime);
@@ -106,16 +110,21 @@ pub fn main_loop(
         // Multiply the matrix At with the vector tmpv
         // let curv_result = at.parallel_sparse_matvec_mul_optimized(&tmpv_result, theprime);
         // let curv_result = at.parallel_csr_matvec_mul_simd_preload::<8>(&tmpv_result, theprime);
-        curv_result = tmpv_result.par_iter().map(|ttcurv| {
-            at.parallel_sparse_matvec_mul(ttcurv, theprime)
+        // curv_result = tmpv_result.par_iter().map(|ttcurv| {
+        curv_result = tmpv_result.iter().map(|ttcurv| {
+            // at.serial_sparse_matvec_mul(ttcurv, theprime)
+            // at.serial_sparse_matvec_mul_chunk(ttcurv, theprime)
+            serial_sparse_matvec_mul_chunk2(&at, ttcurv, theprime)
+            // at.parallel_sparse_matvec_mul(ttcurv, theprime)
         }).collect::<Vec<_>>();
 
         // curv_result = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
         // curv = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
         // curv.copy_from_slice(&curv_result);
         // println!("...");
+        
         // Compute the dot product of u and curv
-        let dot_products = (0..num_u*num_v).into_par_iter().map(|ii| {
+        let dot_products = (0..num_u*num_v).into_iter().map(|ii| {
             let i = ii % num_u;
             let j = ii / num_u;
             // curv_result[i][j] = (curv_result[i][j] + u[i][j] * v[j][i]) % theprime;
@@ -123,6 +132,7 @@ pub fn main_loop(
         }).collect::<Vec<_>>();
         // push to seq
         for ii in 0..num_u*num_v {
+            // seq[ii].push(0);
             seq[ii].push(dot_products[ii]);
         }
 
