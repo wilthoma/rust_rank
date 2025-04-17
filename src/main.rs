@@ -100,8 +100,9 @@ pub fn main_loop(
         // let tmpv_result = curv_result.par_iter().map(|tcurv| {
             // a.serial_sparse_matvec_mul(tcurv, theprime)
             // a.serial_sparse_matvec_mul_chunk(tcurv, theprime)
-            serial_sparse_matvec_mul_chunk2(&a,tcurv, theprime)
-            // a.parallel_sparse_matvec_mul(tcurv, theprime)
+            // serial_sparse_matvec_mul_chunk2(&a,tcurv, theprime)
+            // a.parallel_sparse_matvec_mul_unsafe(tcurv, theprime)
+            a.parallel_sparse_matvec_mul(tcurv, theprime)
         }).collect::<Vec<_>>();
 
         // ) a.parallel_sparse_matvec_mul(&curv_result, theprime);
@@ -114,8 +115,9 @@ pub fn main_loop(
         curv_result = tmpv_result.iter().map(|ttcurv| {
             // at.serial_sparse_matvec_mul(ttcurv, theprime)
             // at.serial_sparse_matvec_mul_chunk(ttcurv, theprime)
-            serial_sparse_matvec_mul_chunk2(&at, ttcurv, theprime)
-            // at.parallel_sparse_matvec_mul(ttcurv, theprime)
+            // serial_sparse_matvec_mul_chunk2(&at, ttcurv, theprime)
+            // at.parallel_sparse_matvec_mul_unsafe(ttcurv, theprime)
+            at.parallel_sparse_matvec_mul(ttcurv, theprime)
         }).collect::<Vec<_>>();
 
         // curv_result = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
