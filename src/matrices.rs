@@ -10,6 +10,7 @@ use std::path::Path;
 // use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
 pub type MyInt = i64;
+// pub type MyInt = f64;
 
 /// Sparse matrix in Compressed Sparse Row (CSR) format
 pub struct CsrMatrix {
@@ -44,7 +45,7 @@ impl CsrMatrix {
 
         // Step 3: Prepare space for transposed values and indices
         let nnz = self.values.len();
-        let mut values_t = vec![0; nnz];
+        let mut values_t = vec![0 as MyInt; nnz];
         let mut col_indices_t = vec![0; nnz];
 
         let mut next_insert_pos = row_ptr_t.clone();
@@ -100,7 +101,7 @@ impl CsrMatrix {
                 rows.iter().map(|&row| {
                     let start = matrix.row_ptr[row];
                     let end = matrix.row_ptr[row + 1];
-                    let mut sum: MyInt = 0;
+                    let mut sum: MyInt = 0 as MyInt;
                     for i in start..end {
                         let col = matrix.col_indices[i];
                         sum = (sum + matrix.values[i] * vector[col]) % theprime;
@@ -118,10 +119,11 @@ impl CsrMatrix {
         (0..self.n_rows).into_par_iter().map(|row| {
             let start = self.row_ptr[row];
             let end = self.row_ptr[row + 1];
-            let vals = &self.values[start..end];
-            let sum = self.col_indices[start..end].iter()
-                .map(|&col| vector[col])
-                .zip(vals)
+
+
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let sum = colis
+                .zip(&self.values[start..end])
                 .map(|(v, &val)| (v * val) )
                 .sum::<MyInt>() % theprime ;
                 //.fold(0, |acc, (v, &val)| (acc + v * val)) % theprime;
@@ -139,6 +141,65 @@ impl CsrMatrix {
         }).collect()
     }
 
+    pub fn serial_sparse_matvec_mul(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+
+        // Parallel iterator over rows
+        (0..self.n_rows).into_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+
+            let mut sum: MyInt = 0 as MyInt;
+            for i in start..end {
+                let col = self.col_indices[i];
+                sum +=  self.values[i] * vector[col];
+                sum %= theprime;
+            }
+            sum
+        }).collect()
+    }
+
+    #[inline]
+    pub fn serial_sparse_matvec_mul_chunk(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+
+        // Parallel iterator over rows
+        let mut result = vec![0 as MyInt; self.n_rows];
+        for row in 0..self.n_rows {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+
+            let mut sum: MyInt = 0 as MyInt;
+            let mut i = start;
+            while i + 4 <= end {
+                let col1 = self.col_indices[i];
+                let col2 = self.col_indices[i + 1];
+                let col3 = self.col_indices[i + 2];
+                let col4 = self.col_indices[i + 3];
+
+                let a1 = self.values[i] * vector[col1];
+                // sum %= theprime;
+                let a2 = self.values[i + 1] * vector[col2];
+                // sum %= theprime;
+                let a3 = self.values[i + 2] * vector[col3];
+                // sum %= theprime;
+                let a4= self.values[i + 3] * vector[col4];
+                sum += a1 + a2 + a3 + a4;
+                sum %= theprime;
+
+                i += 4;
+            }
+
+            while i < end {
+                let col = self.col_indices[i];
+                sum += self.values[i] * vector[col];
+                // sum %= theprime;
+                i += 1;
+            }
+            result[row] = sum % theprime;
+        }
+        result
+    }
 
     // /// SIMD-enhanced CSR matrix-vector multiplication with vector preloading
     // pub fn parallel_csr_matvec_mul_simd_preload<const LANES: usize>(
@@ -241,13 +302,56 @@ impl CsrMatrix {
 
 }
 
+
+#[inline]
+pub fn serial_sparse_matvec_mul_chunk2(A:&CsrMatrix, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+    assert_eq!(A.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+
+    // Parallel iterator over rows
+    let mut result = vec![0 as MyInt; A.n_rows];
+    for row in 0..A.n_rows {
+        let start = A.row_ptr[row];
+        let end: usize = A.row_ptr[row + 1];
+
+        let mut sum: MyInt = 0 as MyInt;
+        let mut i = start;
+        while i + 4 <= end {
+            let col1 = A.col_indices[i];
+            let col2 = A.col_indices[i + 1];
+            let col3 = A.col_indices[i + 2];
+            let col4 = A.col_indices[i + 3];
+
+            let a1 = A.values[i] * vector[col1];
+            // sum %= theprime;
+            let a2 = A.values[i + 1] * vector[col2];
+            // sum %= theprime;
+            let a3 = A.values[i + 2] * vector[col3];
+            // sum %= theprime;
+            let a4= A.values[i + 3] * vector[col4];
+            sum += a1 + a2 + a3 + a4;
+            sum %= theprime;
+
+            i += 4;
+        }
+
+        while i < end {
+            let col = A.col_indices[i];
+            sum += A.values[i] * vector[col];
+            // sum %= theprime;
+            i += 1;
+        }
+        result[row] = sum % theprime;
+    }
+    result
+}
+
 /// Compute the dot product of two vectors modulo `p`
 pub fn dot_product_mod_p(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
     vec1.iter()
         .zip(vec2.iter())
-        .fold(0, |acc, (&x, &y)| (acc + (x * y) ) % p)
+        .fold(0 as MyInt, |acc, (&x, &y)| (acc + (x * y) ) % p)
         // .fold(0, |acc, (&x, &y)| (acc + (x * y) % p) % p)
 
 }
@@ -320,11 +424,11 @@ pub fn load_csr_matrix_from_sms(file_path: &str) -> Result<CsrMatrix, Box<dyn st
 /// Create a random vector of given length with integer entries between 0 and `theprime`
 pub fn create_random_vector(length: usize, theprime: MyInt) -> Vec<MyInt> {
     let mut rng = rand::rng();
-    (0..length).map(|_| rng.random_range(0..theprime)).collect()
+    (0..length).map(|_| rng.random_range(0..(theprime as i64)) as MyInt).collect()
 }
 pub fn create_random_vector_nozero(length: usize, theprime: MyInt) -> Vec<MyInt> {
     let mut rng = rand::rng();
-    (0..length).map(|_| rng.random_range(1..theprime)).collect()
+    (0..length).map(|_| rng.random_range(1..(theprime as i64)) as MyInt).collect()
 }
 
 
