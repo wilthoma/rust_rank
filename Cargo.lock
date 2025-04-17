@@ -508,6 +508,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "quickdiv"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "affb828694e2f006fdcd24d9096eab97dea9f100ee36b19886c9ea4531d49483"
+
+[[package]]
 name = "quote"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -581,6 +587,7 @@ dependencies = [
  "graph6-rs",
  "image",
  "petgraph",
+ "quickdiv",
  "rand",
  "rayon",
 ]

@@ -118,18 +118,24 @@ impl CsrMatrix {
         (0..self.n_rows).into_par_iter().map(|row| {
             let start = self.row_ptr[row];
             let end = self.row_ptr[row + 1];
-
-            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
-            let sum = colis
-                .zip(&self.values[start..end])
+            let vals = &self.values[start..end];
+            let sum = self.col_indices[start..end].iter()
+                .map(|&col| vector[col])
+                .zip(vals)
                 .map(|(v, &val)| (v * val) )
-                .fold(0, |acc, x| (acc + x)) % theprime ;
+                .sum::<MyInt>() % theprime ;
+                //.fold(0, |acc, (v, &val)| (acc + v * val)) % theprime;
+                //.map(|(v, &val)| (v * val) )
+                //.sum::<MyInt>() % theprime ;
+            // % theprime 
+                // .fold(0, |acc, x| (acc + x)) % theprime ;
             // let mut sum: MyInt = 0;;
             // for i in start..end {
             //     let col = self.col_indices[i];
             //     sum = (sum + self.values[i] * vector[col]) % theprime;
             // }
             sum
+            //tprime.rem_of(sum)
         }).collect()
     }
 
