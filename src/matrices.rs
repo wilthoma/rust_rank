@@ -127,9 +127,9 @@ impl CsrMatrix {
                 // .zip(self.values[start..end].iter())
                 //.collect::<Vec<_>>().iter()
                 // .map(|(v, val)| (v * *val) )
-                .map(|(v, &val)| (v * val) )
-                .sum::<MyInt>() % theprime ;
-                //.fold(0, |acc, (v, &val)| (acc + v * val)) % theprime;
+                // .map(|(v, &val)| (v * val) )
+                // .sum::<MyInt>() % theprime ;
+                .fold(0, |acc, (v, &val)| (acc + v * val)) % theprime;
                 //.map(|(v, &val)| (v * val) )
                 //.sum::<MyInt>() % theprime ;
             // % theprime 
