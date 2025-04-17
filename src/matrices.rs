@@ -125,13 +125,19 @@ impl CsrMatrix {
             let sum = colis
                 .zip(&self.values[start..end])
                 .map(|(v, &val)| (v * val) )
-                .fold(0, |acc, x| (acc + x)) % theprime ;
+                .sum::<MyInt>() % theprime ;
+                //.fold(0, |acc, (v, &val)| (acc + v * val)) % theprime;
+                //.map(|(v, &val)| (v * val) )
+                //.sum::<MyInt>() % theprime ;
+            // % theprime 
+                // .fold(0, |acc, x| (acc + x)) % theprime ;
             // let mut sum: MyInt = 0;;
             // for i in start..end {
             //     let col = self.col_indices[i];
             //     sum = (sum + self.values[i] * vector[col]) % theprime;
             // }
             sum
+            //tprime.rem_of(sum)
         }).collect()
     }
     pub fn parallel_sparse_matvec_mul_unsafe(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
