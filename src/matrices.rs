@@ -124,6 +124,9 @@ impl CsrMatrix {
             let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
             let sum = colis
                 .zip(&self.values[start..end])
+                // .zip(self.values[start..end].iter())
+                //.collect::<Vec<_>>().iter()
+                // .map(|(v, val)| (v * *val) )
                 .map(|(v, &val)| (v * val) )
                 .sum::<MyInt>() % theprime ;
                 //.fold(0, |acc, (v, &val)| (acc + v * val)) % theprime;
