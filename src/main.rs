@@ -105,8 +105,10 @@ pub fn main_loop_s_mt(
     // let at = std::sync::Arc::new(at.clone());
     let workers: Vec<_> = txs.into_iter().enumerate().map(|(worker_id, tx)| {
                 let local_curv = curv[worker_id].clone();
-                let a = std::sync::Arc::clone(a);
-                let at = std::sync::Arc::clone(at);
+                // let a = std::sync::Arc::clone(a);
+                // let at = std::sync::Arc::clone(at);
+                let a = CsrMatrix::clone(&a);
+                let at = CsrMatrix::clone(&at);
                 thread::spawn(move || {
                     let mut local_curv = local_curv;
                     for _ in 0..to_be_produced {
