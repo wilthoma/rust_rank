@@ -86,6 +86,7 @@ pub fn main_loop_s_mt(
     save_after: usize,
     use_matvmul_parallel: bool,
     use_vecp_parallel: bool,
+    deep_clone_matrix: bool,
 
 ) -> Result<(), Box<dyn std::error::Error>> {
 
@@ -105,10 +106,10 @@ pub fn main_loop_s_mt(
     // let at = std::sync::Arc::new(at.clone());
     let workers: Vec<_> = txs.into_iter().enumerate().map(|(worker_id, tx)| {
                 let local_curv = curv[worker_id].clone();
-                // let a = std::sync::Arc::clone(a);
-                // let at = std::sync::Arc::clone(at);
-                let a = CsrMatrix::clone(&a);
-                let at = CsrMatrix::clone(&at);
+                let a = if deep_clone_matrix{Arc::new(CsrMatrix::clone(&a))} else {std::sync::Arc::clone(a)};
+                let at = if deep_clone_matrix{Arc::new(CsrMatrix::clone(&at))} else {std::sync::Arc::clone(at)};
+                // let a = CsrMatrix::clone(&a);
+                // let at = CsrMatrix::clone(&at);
                 thread::spawn(move || {
                     let mut local_curv = local_curv;
                     for _ in 0..to_be_produced {
@@ -614,7 +615,7 @@ fn main() {
         println!{"Starting computation..."}
     
         // run main loop
-        if let Err(e) = main_loop_s_mt(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after, true, false) {
+        if let Err(e) = main_loop_s_mt(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after, true, false, false) {
         // if let Err(e) = main_loop_s(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
         // if let Err(e) = main_loop(&a, &at, &row_precond, &col_precond, &mut curv, &u, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
             eprintln!("Error in main loop: {}", e);
