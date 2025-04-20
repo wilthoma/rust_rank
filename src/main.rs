@@ -89,7 +89,7 @@ pub fn main_loop_s(
     //let mut tmpv = vec![0; a.n_rows];
     let num_v = v.len();
 
-    const batch_size: usize = 8;
+    const batch_size: usize = 16;
     let nbatches = (max_nlen + batch_size -1) / batch_size;
 
     for _ in seq[0].len()..nbatches {
@@ -98,6 +98,7 @@ pub fn main_loop_s(
         // let tmpv_result = a.parallel_sparse_matvec_mul_optimized(curv, theprime);
         // let tmpv_result = a.parallel_csr_matvec_mul_simd_preload::<8>(curv, theprime);
         // let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
+        let start_time = std::time::Instant::now();
         let buffer = curv_result.par_iter().map(|tcurv| {
             
             // produce a batch of vectors by repeated application of a and at
@@ -107,31 +108,60 @@ pub fn main_loop_s(
             // a.serial_sparse_matvec_mul_chunk(tcurv, theprime)
             // serial_sparse_matvec_mul_chunk2(&a,tcurv, theprime)
             // a.parallel_sparse_matvec_mul_unsafe(tcurv, theprime)
-            let mut v2 = tcurv.clone();
-            (0..batch_size)
-                .map(|_| {
-                    let vec1 = a.parallel_sparse_matvec_mul(&v2, theprime);
-                    let vec2 =  at.parallel_sparse_matvec_mul(&vec1, theprime);
-                    v2 = vec2.clone();
-                    (vec1, vec2)
-                })
-                .collect::<Vec<_>>()       
+            // let mut v2 = tcurv;//.clone();
+            let mut vector_pairs = vec![(vec![0; a.n_cols], vec![0; a.n_cols]); batch_size];
+            for i in 0..batch_size {
+                let v2 = if i==0 { tcurv } else { &vector_pairs[i-1].1 };
+                let vec1 = a.parallel_sparse_matvec_mul(v2, theprime);
+                let vec2 = at.parallel_sparse_matvec_mul(&vec1, theprime);
+                // v2 = &vec2; //.clone();
+                vector_pairs[i] = (vec1, vec2);
+            } // let mut v2 = tcurv;
+            // (0..batch_size)
+            //     .map(|_| {
+            //         let vec1 = a.parallel_sparse_matvec_mul(&v2, theprime);
+            //         let vec2 =  at.parallel_sparse_matvec_mul(&vec1, theprime);
+            //         v2 = vec2.clone();
+            //         (vec1, vec2)
+            //     })
+            //     .collect::<Vec<_>>()  
+            vector_pairs
 
         }).collect::<Vec<_>>();
 
+        println!("\nTime taken for matrix product computations: {:?}\n", start_time.elapsed());
+
         // compute dot products
-        for t in 0..batch_size {
-            for ii in 0..num_v*num_v {
-                let i = ii % num_v;
-                let j = ii / num_v;
-                // curv_result[i][j] = (curv_result[i][j] + u[i][j] * v[j][i]) % theprime;
+        let start_time = std::time::Instant::now();
+        
+        // (0..num_v*num_v).into_par_iter().for_each(|ii| {
+        //     for t in 0..batch_size {
+        //         let i = ii % num_v;
+        //         let j = ii / num_v;
+        //         // curv_result[i][j] = (curv_result[i][j] + u[i][j] * v[j][i]) % theprime;
+        //         let (vec1a, vec1b) = &buffer[t][i];
+        //         let (vec2a, vec2b) = &buffer[t][j];
+        //         // let start_time = std::time::Instant::now();
+        //         // wasting some time here ... should restrict to i<=j
+        //         seq[ii].push(dot_product_mod_p(vec1a, vec2a, theprime));
+        //         seq[ii].push(dot_product_mod_p(vec1b, vec2b, theprime));
+        //         // println!("Time taken for dot product computations: {:?}", start_time.elapsed());
+        //     }
+        use std::sync::Mutex;
+        let seq_mutex: Vec<Mutex<&mut Vec<MyInt>>> = seq.iter_mut().map(Mutex::new).collect();
+
+        seq_mutex.par_iter().enumerate().for_each(|(ii, se_mutex)| {
+            let i = ii % num_v;
+            let j = ii / num_v;
+            let mut se = se_mutex.lock().unwrap();
+            for t in 0..batch_size {
                 let (vec1a, vec1b) = &buffer[i][t];
                 let (vec2a, vec2b) = &buffer[j][t];
-                // wasting some time here ... should restrict to i<=j
-                seq[ii].push(dot_product_mod_p(vec1a, vec2a, theprime));
-                seq[ii].push(dot_product_mod_p(vec1b, vec2b, theprime));
+                se.push(dot_product_mod_p_parallel(vec1a, vec2a, theprime));
+                se.push(dot_product_mod_p_parallel(vec1b, vec2b, theprime));
             }
-        }
+        });
+        println!("Time taken for dot product computations: {:?}\n", start_time.elapsed());
 
         // store current vectors in curv
         for ii in 0..num_v {
@@ -421,9 +451,9 @@ fn main() {
     }
 
     // test: gaussian elim
-    let mut AA = a.clone();
-    println!("Gaussian elimination...");
-    AA.gaussian_elimination_markowitz(prime);
+    // let mut AA = a.clone();
+    // println!("Gaussian elimination...");
+    // AA.gaussian_elimination_markowitz(prime);
 
     // Check if already done with sequence computation
     if max_nlen > 0 && seq[0].len() >= max_nlen {
@@ -456,7 +486,8 @@ fn main() {
         println!{"Starting computation..."}
     
         // run main loop
-        if let Err(e) = main_loop(&a, &at, &row_precond, &col_precond, &mut curv, &u, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
+        if let Err(e) = main_loop_s(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
+        // if let Err(e) = main_loop(&a, &at, &row_precond, &col_precond, &mut curv, &u, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
             eprintln!("Error in main loop: {}", e);
             std::process::exit(1);
         } else {
