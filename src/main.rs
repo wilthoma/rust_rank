@@ -135,7 +135,7 @@ pub fn main_loop_s(
 
         // store current vectors in curv
         for ii in 0..num_v {
-            let vec2 = &buffer[ii][batch_size-1].0;
+            let vec2 = &buffer[ii][batch_size-1].1;
             curv_result[ii].copy_from_slice(vec2);
         }
 
