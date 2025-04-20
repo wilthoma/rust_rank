@@ -584,6 +584,22 @@ pub fn dot_product_mod_p_parallel(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> M
         .reduce(|| 0, |acc, chunk_sum| (acc + chunk_sum) ) % p
 }
 
+pub fn dot_product_mod_p_serial(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
+    assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
+
+    let chunk_size = 100;
+
+    vec1.chunks(chunk_size)
+        .zip(vec2.chunks(chunk_size))
+        .map(|(chunk1, chunk2)| {
+            chunk1.iter()
+                .zip(chunk2.iter())
+                .fold(0 as MyInt, |acc, (&x, &y)| acc + (x * y))
+                % p
+        })
+        .sum::<MyInt>() % p
+}
+
 
 
 /// Load a sparse matrix in SMS format from a file

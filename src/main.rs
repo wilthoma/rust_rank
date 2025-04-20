@@ -6,6 +6,7 @@ mod graphs;
 mod wdm_files;
 mod block_berlekamp_massey;
 use block_berlekamp_massey::block_berlekamp_massey;
+use image::buffer;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
 use wdm_files::{save_wdm_file2, load_wdm_file2};
 use graphs::count_triangles_in_file;
@@ -13,6 +14,9 @@ use std::io::Write;
 use clap::{Arg, Command};
 use std::cmp::min;
 use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{self, Sender, Receiver};
+use std::thread;
 
 // type MyInt = i64;
 
@@ -50,20 +54,137 @@ pub fn report_progress(
     last_nlen: usize,
     nlen: usize,
     max_nlen: usize,
+    suffix: &str,
 ) {
     let elapsed = start_time.elapsed();
     let elapsed_last = last_time.elapsed();
     let speed = (nlen - last_nlen) as f64 / elapsed_last.as_secs_f64();
     let remaining = (max_nlen - nlen) as f64 / speed;
     print!(
-        "\rProgress: {}/{} | Elapsed: {:?} | Throughput: {:.2}/s | Remaining: {:?}            ",
+        "\rProgress: {}/{} | Elapsed: {:?} | Throughput: {:.2}/s | Remaining: {:?} | {}           ",
         nlen,
         max_nlen,
         elapsed,
         speed,
-        std::time::Duration::from_secs_f64(remaining)
+        std::time::Duration::from_secs_f64(remaining),
+        suffix
     );
     std::io::stdout().flush().unwrap();
+}
+
+pub fn main_loop_s_mt(
+    a: &Arc<CsrMatrix>,
+    at: &Arc<CsrMatrix>,
+    row_precond: &[MyInt],
+    col_precond: &[MyInt],
+    curv: &mut Vec<Vec<MyInt>>,
+    v: &Vec<Vec<MyInt>>,
+    seq: &mut Vec<Vec<MyInt>>,
+    max_nlen: usize,
+    wdm_filename: &str,
+    theprime: MyInt,
+    save_after: usize,
+    use_matvmul_parallel: bool,
+    use_vecp_parallel: bool,
+
+) -> Result<(), Box<dyn std::error::Error>> {
+
+    let start = std::time::Instant::now();
+    let mut last_save = start;
+    let mut last_report = start;
+    let mut last_nlen = seq[0].len();
+    let mut curv_result  = curv.clone();
+    let to_be_produced = max_nlen - seq[0].len();
+    //let mut tmpv = vec![0; a.n_rows];
+    let num_v = v.len();
+    let buffer_capacity = 10;
+    let (txs, rxs): (Vec<mpsc::SyncSender<_>>, Vec<mpsc::Receiver<_>>) = 
+        (0..num_v).map(|_| mpsc::sync_channel(buffer_capacity)).unzip();
+
+    // let a = std::sync::Arc::new(a.clone());
+    // let at = std::sync::Arc::new(at.clone());
+    let workers: Vec<_> = txs.into_iter().enumerate().map(|(worker_id, tx)| {
+                let local_curv = curv[worker_id].clone();
+                let a = std::sync::Arc::clone(a);
+                let at = std::sync::Arc::clone(at);
+                thread::spawn(move || {
+                    let mut local_curv = local_curv;
+                    for _ in 0..to_be_produced {
+                        let vec1 = if use_matvmul_parallel {a.parallel_sparse_matvec_mul(&local_curv, theprime)}
+                                             else {a.serial_sparse_matvec_mul(&local_curv, theprime)};
+                        let vec2 = if use_matvmul_parallel {at.parallel_sparse_matvec_mul(&vec1, theprime)}
+                                             else {at.serial_sparse_matvec_mul(&vec1, theprime)};
+                        tx.send((vec1.clone(), vec2.clone())).unwrap();
+                        local_curv = vec2;
+                    }
+                })
+            }).collect();
+    
+    for _ in 0..to_be_produced {
+        let mut received_tokens = Vec::new();
+
+        // First, read one token from each channel
+        for rx in &rxs {
+            match rx.recv() {
+            Ok((vec1, vec2)) => {
+                received_tokens.push((vec1, vec2));
+            }
+            Err(e) => {
+                eprintln!("Error receiving token: {}", e);
+                return Err(Box::new(e));
+            }
+            }
+        }
+        // Now, process the received tokens
+        // let start_time = std::time::Instant::now();
+        for ii in 0..num_v*num_v {
+            // if ii>0{ continue;}
+
+            let i = ii % num_v;
+            let j = ii / num_v;
+            let (vec1a, vec1b) = &received_tokens[i];
+            let (vec2a, vec2b) = &received_tokens[j];
+            if (use_vecp_parallel){
+                seq[ii].push(dot_product_mod_p_parallel(vec1a, vec2a, theprime));
+                seq[ii].push(dot_product_mod_p_parallel(vec1b, vec2b, theprime));
+            }
+            else {
+                seq[ii].push(dot_product_mod_p_serial(vec1a, vec2a, theprime));
+                seq[ii].push(dot_product_mod_p_serial(vec1b, vec2b, theprime));
+            }
+        }
+        // println!("Time taken for dot product computations: {:?}\n", start_time.elapsed());
+
+        // store current vectors in curv
+        for ii in 0..num_v {
+            let vec2 = &received_tokens[ii].1;
+            curv_result[ii].copy_from_slice(vec2);
+
+        }
+        // std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        if last_save.elapsed().as_secs_f64() > save_after as f64 {
+            println!("\nSaving...");
+            let save_start = std::time::Instant::now();
+            // save_wdm_file(&wdm_filename, &a, theprime, &row_precond, &col_precond, &u, &v, &curv, &seq)?;
+            save_wdm_file2(&wdm_filename, &a, theprime, &row_precond, &col_precond, &v, &v, &curv_result, &seq)?;
+            last_save = std::time::Instant::now();
+            println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
+        }
+
+        if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
+            // println!("Report");
+            let channel_fills: String = rxs.iter().map(|rx| {
+                let count = rx.try_iter().count();
+                format!("{} ", count)
+            }).collect::<String>();
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, &format!("Channel fill {}", channel_fills));
+            last_report = std::time::Instant::now();
+            last_nlen = seq[0].len();
+        }
+    }
+    Ok(())
+
 }
 
 
@@ -147,7 +268,7 @@ pub fn main_loop_s(
         //         seq[ii].push(dot_product_mod_p(vec1b, vec2b, theprime));
         //         // println!("Time taken for dot product computations: {:?}", start_time.elapsed());
         //     }
-        use std::sync::Mutex;
+
         let seq_mutex: Vec<Mutex<&mut Vec<MyInt>>> = seq.iter_mut().map(Mutex::new).collect();
 
         seq_mutex.par_iter().enumerate().for_each(|(ii, se_mutex)| {
@@ -217,7 +338,7 @@ pub fn main_loop_s(
 
         if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
             // println!("Report");
-            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen);
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, "");
             last_report = std::time::Instant::now();
             last_nlen = seq[0].len();
         }
@@ -312,7 +433,7 @@ pub fn main_loop(
 
         if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
             // println!("Report");
-            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen);
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, "");
             last_report = std::time::Instant::now();
             last_nlen = seq[0].len();
         }
@@ -417,6 +538,7 @@ fn main() {
 
     let start_time = std::time::Instant::now();
     let mut a = load_csr_matrix_from_sms(filename).expect("Failed to load matrix");
+    // let a = std::sync::Arc::new(load_csr_matrix_from_sms(filename).expect("Failed to load matrix"));
     // let mut a = reorder_matrix(&a, "data/gra12_9.g6", "data/gra11_9.g6");
     let duration = start_time.elapsed();
     println!("Time taken to load matrix: {:?}", duration);
@@ -463,6 +585,7 @@ fn main() {
         println!{"Preconditioning matrix ..."}
         // precondition matrix
         let mut at = a.transpose(); //transpose_csr_matrix(&a);
+        // let at = std::sync::Arc::new(a.transpose());
         // let att = at.transpose(); // transpose_csr_matrix(&at);
         // if a.are_csr_matrices_equal( &att){
         //     println!("Yeah");
@@ -481,12 +604,16 @@ fn main() {
         a.scale_csr_matrix_columns(&col_precond, prime);
         // println!("scaling at");
         at.scale_csr_matrix_rows(&col_precond, prime); 
+
+        let a = std::sync::Arc::new(a);
+        let at = std::sync::Arc::new(at);
         println!{"Done"}
     
         println!{"Starting computation..."}
     
         // run main loop
-        if let Err(e) = main_loop_s(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
+        if let Err(e) = main_loop_s_mt(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after, true, false) {
+        // if let Err(e) = main_loop_s(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
         // if let Err(e) = main_loop(&a, &at, &row_precond, &col_precond, &mut curv, &u, &v, &mut seq, max_nlen, &wdm_filename, prime, save_after) {
             eprintln!("Error in main loop: {}", e);
             std::process::exit(1);
