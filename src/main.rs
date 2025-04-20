@@ -67,6 +67,136 @@ pub fn report_progress(
 }
 
 
+pub fn main_loop_s(
+    a: &CsrMatrix,
+    at: &CsrMatrix,
+    row_precond: &[MyInt],
+    col_precond: &[MyInt],
+    curv: &mut Vec<Vec<MyInt>>,
+    v: &Vec<Vec<MyInt>>,
+    seq: &mut Vec<Vec<MyInt>>,
+    max_nlen: usize,
+    wdm_filename: &str,
+    theprime: MyInt,
+    save_after: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+
+    let start = std::time::Instant::now();
+    let mut last_save = start;
+    let mut last_report = start;
+    let mut last_nlen = seq[0].len();
+    let mut curv_result  = curv.clone();
+    //let mut tmpv = vec![0; a.n_rows];
+    let num_v = v.len();
+
+    const batch_size: usize = 8;
+    let nbatches = (max_nlen + batch_size -1) / batch_size;
+
+    for _ in seq[0].len()..nbatches {
+        // Multiply the matrix A with the vector curv
+        // println!(".");
+        // let tmpv_result = a.parallel_sparse_matvec_mul_optimized(curv, theprime);
+        // let tmpv_result = a.parallel_csr_matvec_mul_simd_preload::<8>(curv, theprime);
+        // let tmpv_result = a.parallel_sparse_matvec_mul(curv, theprime);
+        let buffer = curv_result.par_iter().map(|tcurv| {
+            
+            // produce a batch of vectors by repeated application of a and at
+
+            // let tmpv_result = curv_result.par_iter().map(|tcurv| {
+            // a.serial_sparse_matvec_mul(tcurv, theprime)
+            // a.serial_sparse_matvec_mul_chunk(tcurv, theprime)
+            // serial_sparse_matvec_mul_chunk2(&a,tcurv, theprime)
+            // a.parallel_sparse_matvec_mul_unsafe(tcurv, theprime)
+            let mut v2 = tcurv;
+            (0..batch_size)
+                .map(|_| {
+                    let vec1 = a.parallel_sparse_matvec_mul(v2, theprime);
+                    let vec2 =  at.parallel_sparse_matvec_mul(vec1, theprime);
+                    v2 = &vec2;
+                    (vec1, vec2)
+                })
+                .collect::<Vec<_>>()       
+
+        }).collect::<Vec<_>>();
+
+        // compute dot products
+        for t in 0..batch_size {
+            for ii in 0..num_v*num_v {
+                let i = ii % num_v;
+                let j = ii / num_v;
+                // curv_result[i][j] = (curv_result[i][j] + u[i][j] * v[j][i]) % theprime;
+                let (vec1a, vec1b) = &buffer[i][t];
+                let (vec2a, vec2b) = &buffer[j][t];
+                // wasting some time here ... should restrict to i<=j
+                seq[ii].push(dot_product_mod_p(vec1a, vec2a, theprime))
+                seq[ii].push(dot_product_mod_p(vec1b, vec2b, theprime))
+            }
+        }
+
+        // store current vectors in curv
+        for ii in 0..num_v {
+            let vec2 = &buffer[ii][batch_size-1].0;
+            curv_result[ii].copy_from_slice(vec2);
+        }
+
+
+        // ) a.parallel_sparse_matvec_mul(&curv_result, theprime);
+        //tmpv.copy_from_slice(&tmpv_result);
+        // println!("..");
+        // Multiply the matrix At with the vector tmpv
+        // let curv_result = at.parallel_sparse_matvec_mul_optimized(&tmpv_result, theprime);
+        // let curv_result = at.parallel_csr_matvec_mul_simd_preload::<8>(&tmpv_result, theprime);
+        // curv_result = tmpv_result.par_iter().map(|ttcurv| {
+        // curv_result = tmpv_result.iter().map(|ttcurv| {
+        //     // at.serial_sparse_matvec_mul(ttcurv, theprime)
+        //     // at.serial_sparse_matvec_mul_chunk(ttcurv, theprime)
+        //     // serial_sparse_matvec_mul_chunk2(&at, ttcurv, theprime)
+        //     // at.parallel_sparse_matvec_mul_unsafe(ttcurv, theprime)
+        //     at.parallel_sparse_matvec_mul(ttcurv, theprime)
+        // }).collect::<Vec<_>>();
+
+        // curv_result = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
+        // curv = at.parallel_sparse_matvec_mul(&tmpv_result, theprime);
+        // curv.copy_from_slice(&curv_result);
+        // println!("...");
+        
+        // // Compute the dot product of u and curv
+        // let dot_products = (0..num_u*num_v).into_iter().map(|ii| {
+        //     let i = ii % num_u;
+        //     let j = ii / num_u;
+        //     // curv_result[i][j] = (curv_result[i][j] + u[i][j] * v[j][i]) % theprime;
+        //     dot_product_mod_p(&u[i], &curv_result[j], theprime)
+        // }).collect::<Vec<_>>();
+        // // push to seq
+        // for ii in 0..num_u*num_v {
+        //     // seq[ii].push(0);
+        //     seq[ii].push(dot_products[ii]);
+        // }
+
+        // let dot_product = u.iter().zip(curv.iter()).fold(0, |acc, (&ui, &curvi)| (acc + ui * curvi) % theprime);
+        // seq.push(dot_product);
+        // println!("....");
+        if last_save.elapsed().as_secs_f64() > save_after as f64 {
+            println!("\nSaving...");
+            let save_start = std::time::Instant::now();
+            // save_wdm_file(&wdm_filename, &a, theprime, &row_precond, &col_precond, &u, &v, &curv, &seq)?;
+            save_wdm_file2(&wdm_filename, &a, theprime, &row_precond, &col_precond, &v, &v, &curv_result, &seq)?;
+            last_save = std::time::Instant::now();
+            println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
+        }
+
+        if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
+            // println!("Report");
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen);
+            last_report = std::time::Instant::now();
+            last_nlen = seq[0].len();
+        }
+    }
+    // copy curv_result to curv
+    *curv = curv_result.clone();
+    Ok(())
+}
+
 pub fn main_loop(
     a: &CsrMatrix,
     at: &CsrMatrix,
@@ -289,6 +419,11 @@ fn main() {
         let d = min(a.n_cols, a.n_rows) as f32;
         max_nlen =  (d/(num_u as f32) + d/(num_v as f32) + 1.0).floor() as usize; // 2* min(a.n_cols, a.n_rows);
     }
+
+    // test: gaussian elim
+    let mut AA = a.clone();
+    println!("Gaussian elimination...");
+    AA.gaussian_elimination_markowitz(prime);
 
     // Check if already done with sequence computation
     if max_nlen > 0 && seq[0].len() >= max_nlen {

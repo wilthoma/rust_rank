@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::{self, BufRead};
 use rand::Rng;
-use std::cmp::Ordering;
+use std::cmp::{Ordering, min};
 use image::{ImageBuffer, Luma};
 use std::path::Path;
 
@@ -13,6 +13,7 @@ pub type MyInt = i64;
 // pub type MyInt = f64;
 
 /// Sparse matrix in Compressed Sparse Row (CSR) format
+#[derive(Clone, Debug)]
 pub struct CsrMatrix {
     pub values: Vec<MyInt>,      // Non-zero values
     pub col_indices: Vec<usize>, // Column indices of values
@@ -26,6 +27,17 @@ pub struct CsrMatrix {
 //     let result = (a as i128 * b as i128) % p as i128;
 //     ((result + p as i128) % p as i128) as i64
 // }
+
+fn modinv(a: MyInt, p: MyInt) -> MyInt {
+    let (mut a, mut m) = (a.rem_euclid(p), p);
+    let (mut x0, mut x1) = (0, 1);
+    while a > 1 {
+        let q = a / m;
+        (a, m) = (m, a % m);
+        (x0, x1) = (x1 - q * x0, x0);
+    }
+    x1.rem_euclid(p)
+}
 
 impl CsrMatrix {
     /// Transposes the CSR matrix
@@ -218,6 +230,188 @@ impl CsrMatrix {
         }
         result
     }
+
+
+
+    pub fn gaussian_elimination_markowitz(&mut self, p: MyInt) {
+        let r = min(self.n_rows, self.n_cols);
+        let mut nsteps = 0;
+
+        let nnz0 = self.values.len();
+
+        let mut row_nnz = vec![0; self.n_rows];
+        let mut col_nnz = vec![0; self.n_cols];
+        let mut used_rows = vec![false; self.n_rows];
+        let mut used_cols = vec![false; self.n_cols];
+
+        // Precompute row_nnz
+        for row in 0..self.n_rows {
+            row_nnz[row] = self.row_ptr[row + 1] - self.row_ptr[row];
+        }
+
+        // Precompute col_nnz
+        for &col in &self.col_indices {
+            col_nnz[col] += 1;
+        }
+
+        for _ in 0..self.n_rows.min(self.n_cols) {
+            println!("Elim: pivoting...");
+            let Some(((pivot_row, pivot_col), score)) = self.select_markowitz_pivot(&row_nnz, &col_nnz,&used_rows, &used_cols, p) else {
+                continue;
+            };
+            // println!("Selected pivot at row {}, column {} with score {}", pivot_row, pivot_col, score);
+
+            // check if it is worth to reduce
+            nsteps += 1;
+            if score * (r-nsteps) > 2* self.values.len()-nsteps  {
+                println!("Further Gaussian elimination not worth: {} * {} > {}; {} steps", score, r-nsteps,self.values.len(),  nsteps);
+                return;
+            }
+            
+            // used_rows.insert(pivot_row);
+            // used_cols.insert(pivot_col);
+            used_rows[pivot_row] = true;
+            used_cols[pivot_col] = true;
+
+            // Optionally zero out nnz counts to prevent reuse
+            row_nnz[pivot_row] = 0;
+            col_nnz[pivot_col] = 0;
+
+            println!("Elim: {}, delta: {}", nsteps, self.values.len()-nnz0);
+
+            let pivot_val = self.get(pivot_row, pivot_col, p);
+            let inv = modinv(pivot_val, p);
+            self.scale_row(pivot_row, inv, p);
+
+            for row in 0..self.n_rows {
+                if row == pivot_row {
+                    continue;
+                }
+                let coeff = self.get(row, pivot_col, p);
+                if coeff != 0 {
+                    self.row_subtract(row, pivot_row, coeff, p);
+                }
+            }
+
+        }
+    }
+
+    fn get(&self, row: usize, col: usize, p: MyInt) -> MyInt {
+        let start = self.row_ptr[row];
+        let end = self.row_ptr[row + 1];
+        for i in start..end {
+            if self.col_indices[i] == col {
+                return self.values[i].rem_euclid(p);
+            }
+        }
+        0
+    }
+
+    fn scale_row(&mut self, row: usize, factor: MyInt, p: MyInt) {
+        let start = self.row_ptr[row];
+        let end = self.row_ptr[row + 1];
+        for i in start..end {
+            self.values[i] = (self.values[i] * factor).rem_euclid(p);
+        }
+    }
+
+    fn row_subtract(&mut self, target: usize, source: usize, factor: MyInt, p: MyInt) {
+        use std::collections::HashMap;
+        let mut row_map: HashMap<usize, MyInt> = HashMap::new();
+
+        let tgt_start = self.row_ptr[target];
+        let tgt_end = self.row_ptr[target + 1];
+        for i in tgt_start..tgt_end {
+            row_map.insert(self.col_indices[i], self.values[i]);
+        }
+
+        let src_start = self.row_ptr[source];
+        let src_end = self.row_ptr[source + 1];
+        for i in src_start..src_end {
+            let col = self.col_indices[i];
+            let val = self.values[i];
+            *row_map.entry(col).or_insert(0) =
+                (row_map.get(&col).unwrap_or(&0) - factor * val).rem_euclid(p);
+        }
+
+        let mut new_cols = Vec::new();
+        let mut new_vals = Vec::new();
+        for (&col, &val) in &row_map {
+            if val != 0 {
+                new_cols.push(col);
+                new_vals.push(val);
+            }
+        }
+
+        let mut zipped: Vec<_> = new_cols.into_iter().zip(new_vals).collect();
+        zipped.sort_by_key(|&(c, _)| c);
+
+        self.col_indices.splice(tgt_start..tgt_end, zipped.iter().map(|&(c, _)| c));
+        self.values.splice(tgt_start..tgt_end, zipped.iter().map(|&(_, v)| v));
+
+        let new_len = zipped.len();
+        let old_len = tgt_end - tgt_start;
+        let diff = new_len as isize - old_len as isize;
+        for i in (target + 1)..=self.n_rows {
+            self.row_ptr[i] = (self.row_ptr[i] as isize + diff) as usize;
+        }
+    }
+
+    fn select_markowitz_pivot(
+        &self,
+        row_nnz: &[usize],
+        col_nnz: &[usize],
+        used_rows: &[bool],
+        used_cols: &[bool],
+        p: MyInt,
+    ) -> Option<((usize, usize), usize)> {
+        let mut best_score = usize::MAX;
+        let mut pivot = None;
+    
+        for row in 0..self.n_rows {
+            if used_rows[row] {
+                continue;
+            }
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+    
+            for idx in start..end {
+                let col = self.col_indices[idx];
+                if used_cols[col] {
+                    continue;
+                }
+    
+                let val = self.values[idx].rem_euclid(p);
+                if val == 0 {
+                    continue;
+                }
+    
+                let score = (row_nnz[row].saturating_sub(1)) * (col_nnz[col].saturating_sub(1));
+                if score < best_score {
+                    best_score = score;
+                    pivot = Some((row, col));
+                }
+            }
+        }
+    
+        pivot.map(|pos| (pos, best_score))
+    }
+
+    fn col_nnz(&self, col: usize) -> usize {
+        let mut count = 0;
+        for i in 0..self.n_rows {
+            let start = self.row_ptr[i];
+            let end = self.row_ptr[i + 1];
+            for j in start..end {
+                if self.col_indices[j] == col && self.values[j] != 0 {
+                    count += 1;
+                    break;
+                }
+            }
+        }
+        count
+    }
+
 
     // /// SIMD-enhanced CSR matrix-vector multiplication with vector preloading
     // pub fn parallel_csr_matvec_mul_simd_preload<const LANES: usize>(
