@@ -107,12 +107,12 @@ pub fn main_loop_s(
             // a.serial_sparse_matvec_mul_chunk(tcurv, theprime)
             // serial_sparse_matvec_mul_chunk2(&a,tcurv, theprime)
             // a.parallel_sparse_matvec_mul_unsafe(tcurv, theprime)
-            let mut v2 = tcurv;
+            let mut v2 = tcurv.clone();
             (0..batch_size)
                 .map(|_| {
-                    let vec1 = a.parallel_sparse_matvec_mul(v2, theprime);
-                    let vec2 =  at.parallel_sparse_matvec_mul(vec1, theprime);
-                    v2 = &vec2;
+                    let vec1 = a.parallel_sparse_matvec_mul(&v2, theprime);
+                    let vec2 =  at.parallel_sparse_matvec_mul(&vec1, theprime);
+                    v2 = vec2.clone();
                     (vec1, vec2)
                 })
                 .collect::<Vec<_>>()       
@@ -128,8 +128,8 @@ pub fn main_loop_s(
                 let (vec1a, vec1b) = &buffer[i][t];
                 let (vec2a, vec2b) = &buffer[j][t];
                 // wasting some time here ... should restrict to i<=j
-                seq[ii].push(dot_product_mod_p(vec1a, vec2a, theprime))
-                seq[ii].push(dot_product_mod_p(vec1b, vec2b, theprime))
+                seq[ii].push(dot_product_mod_p(vec1a, vec2a, theprime));
+                seq[ii].push(dot_product_mod_p(vec1b, vec2b, theprime));
             }
         }
 
