@@ -90,7 +90,7 @@ pub fn main_loop_s_mt(
                 // let at = CsrMatrix::clone(&at);
                 thread::spawn(move || {
                     let mut local_curv = local_curv;
-                    for _ in 0..to_be_produced {
+                    for _ in 0..to_be_produced/2 {
                         let vec1 = if use_matvmul_parallel {a.parallel_sparse_matvec_mul(&local_curv, theprime)}
                                              else {a.serial_sparse_matvec_mul(&local_curv, theprime)};
                         let vec2 = if use_matvmul_parallel {at.parallel_sparse_matvec_mul(&vec1, theprime)}
@@ -101,7 +101,7 @@ pub fn main_loop_s_mt(
                 })
             }).collect();
     
-    for _ in 0..to_be_produced {
+    for _ in 0..to_be_produced/2 {
         let mut received_tokens = Vec::new();
 
         // First, read one token from each channel
@@ -165,6 +165,7 @@ pub fn main_loop_s_mt(
             last_nlen = seq[0].len();
         }
     }
+    *curv = curv_result.clone();
     Ok(())
 
 }
@@ -286,10 +287,14 @@ fn main() {
     let duration = start_time.elapsed();
     println!("Time taken to load matrix: {:?}", duration);
     println!("Loaded matrix with {} rows and {} columns", a.n_rows, a.n_cols);
-    let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
-    let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
+    // let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
+    // let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
+    let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
+    let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
+
     // let mut u: Vec<Vec<MyInt>> = (0..num_u).map(|_| create_random_vector(a.n_cols, prime)).collect();
     let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
+    // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
     let mut curv: Vec<Vec<MyInt>> = v.clone();
     let mut seq: Vec<Vec<MyInt>> = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
 

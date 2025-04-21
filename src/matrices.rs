@@ -514,6 +514,9 @@ impl CsrMatrix {
 
 }
 
+pub fn prettify_vect(v: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+    v.iter().map(|&x| (x + theprime) % theprime).collect()
+}
 
 #[inline]
 pub fn serial_sparse_matvec_mul_chunk2(A:&CsrMatrix, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {

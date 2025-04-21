@@ -2,7 +2,7 @@
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 
-use crate::matrices::{MyInt, CsrMatrix};
+use crate::matrices::{prettify_vect, CsrMatrix, MyInt};
 
 /// This module contains code to read and write .wdm files.
 /// These are text files used to store progress in the computation of the Wiedemann sequence, that is,
@@ -552,7 +552,8 @@ pub fn save_wdm_file_sym(
     writeln!(writer)?;
 
     // Write the v_list
-    for v in v_list {
+    for vv in v_list {
+        let v = prettify_vect(vv, theprime);
         for (i, val) in v.iter().enumerate() {
             if i > 0 {
                 write!(writer, " ")?;
@@ -563,7 +564,8 @@ pub fn save_wdm_file_sym(
     }
 
     // Write the curv_list
-    for curv in curv_list {
+    for curvv in curv_list {
+        let curv = prettify_vect(curvv, theprime);
         for (i, val) in curv.iter().enumerate() {
             if i > 0 {
                 write!(writer, " ")?;
