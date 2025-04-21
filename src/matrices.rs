@@ -173,6 +173,21 @@ impl CsrMatrix {
 
     pub fn serial_sparse_matvec_mul(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
         assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+        (0..self.n_rows).into_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+
+
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let sum = colis
+                .zip(&self.values[start..end])
+                .fold(0, |acc, (v, &val)| (acc + v * val)) % theprime;
+            sum
+        }).collect()
+    }
+
+    pub fn serial_sparse_matvec_mul2(&self, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
 
         // Parallel iterator over rows
         (0..self.n_rows).into_iter().map(|row| {

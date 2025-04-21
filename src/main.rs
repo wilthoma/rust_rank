@@ -16,6 +16,7 @@ use std::cmp::min;
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender, Receiver};
+use crossbeam_channel;
 use std::thread;
 
 // type MyInt = i64;
@@ -77,29 +78,32 @@ pub fn main_loop_s_mt(
     //let mut tmpv = vec![0; a.n_rows];
     let num_v = v.len();
     let buffer_capacity = 10;
-    let (txs, rxs): (Vec<mpsc::SyncSender<_>>, Vec<mpsc::Receiver<_>>) = 
-        (0..num_v).map(|_| mpsc::sync_channel(buffer_capacity)).unzip();
+    let (txs, rxs) : (Vec<_>, Vec<_>) = 
+        (0..num_v).map(|_| crossbeam_channel::bounded(buffer_capacity)).unzip();
 
-    // let a = std::sync::Arc::new(a.clone());
-    // let at = std::sync::Arc::new(at.clone());
+    // Update the worker threads to send only one vector
     let workers: Vec<_> = txs.into_iter().enumerate().map(|(worker_id, tx)| {
-                let local_curv = curv[worker_id].clone();
-                let a = if deep_clone_matrix{Arc::new(CsrMatrix::clone(&a))} else {std::sync::Arc::clone(a)};
-                let at = if deep_clone_matrix{Arc::new(CsrMatrix::clone(&at))} else {std::sync::Arc::clone(at)};
-                // let a = CsrMatrix::clone(&a);
-                // let at = CsrMatrix::clone(&at);
-                thread::spawn(move || {
-                    let mut local_curv = local_curv;
-                    for _ in 0..to_be_produced/2 {
-                        let vec1 = if use_matvmul_parallel {a.parallel_sparse_matvec_mul(&local_curv, theprime)}
-                                             else {a.serial_sparse_matvec_mul(&local_curv, theprime)};
-                        let vec2 = if use_matvmul_parallel {at.parallel_sparse_matvec_mul(&vec1, theprime)}
-                                             else {at.serial_sparse_matvec_mul(&vec1, theprime)};
-                        tx.send((vec1.clone(), vec2.clone())).unwrap();
-                        local_curv = vec2;
-                    }
-                })
-            }).collect();
+        let local_curv = curv[worker_id].clone();
+        let a = if deep_clone_matrix { Arc::new(CsrMatrix::clone(&a)) } else { std::sync::Arc::clone(a) };
+        let at = if deep_clone_matrix { Arc::new(CsrMatrix::clone(&at)) } else { std::sync::Arc::clone(at) };
+        thread::spawn(move || {
+            // let tx = tx.clone();
+            let mut local_curv = local_curv;
+            for _ in 0..(to_be_produced/2) {
+                let vec = if use_matvmul_parallel {
+                    at.parallel_sparse_matvec_mul(&a.parallel_sparse_matvec_mul(&local_curv, theprime), theprime)
+                } else {
+                    at.serial_sparse_matvec_mul(&a.serial_sparse_matvec_mul(&local_curv, theprime), theprime)
+                };
+                if tx.send(vec.clone()).is_err(){
+                    eprintln!("Error sending token from worker {}", worker_id);
+                    return;
+                };
+                local_curv = vec;
+            }
+            // println!("Worker {} done", worker_id);
+        })
+    }).collect();
     
     for _ in 0..to_be_produced/2 {
         let mut received_tokens = Vec::new();
@@ -107,8 +111,8 @@ pub fn main_loop_s_mt(
         // First, read one token from each channel
         for rx in &rxs {
             match rx.recv() {
-            Ok((vec1, vec2)) => {
-                received_tokens.push((vec1, vec2));
+            Ok(vec) => {
+                received_tokens.push(vec);
             }
             Err(e) => {
                 eprintln!("Error receiving token: {}", e);
@@ -121,15 +125,17 @@ pub fn main_loop_s_mt(
         let mut ii = 0;
         for i in 0..num_v {
             for j in i..num_v {
-                let (vec1a, vec1b) = &received_tokens[i];
-                let (vec2a, vec2b) = &received_tokens[j];
+                let vec1 = &received_tokens[i];
+                let vec1_prev = &curv_result[i];
+                let vec2 = &received_tokens[j];
+
                 if (use_vecp_parallel){
-                    seq[ii].push(dot_product_mod_p_parallel(vec1a, vec2a, theprime));
-                    seq[ii].push(dot_product_mod_p_parallel(vec1b, vec2b, theprime));
+                    seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
                 }
                 else {
-                    seq[ii].push(dot_product_mod_p_serial(vec1a, vec2a, theprime));
-                    seq[ii].push(dot_product_mod_p_serial(vec1b, vec2b, theprime));
+                    seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprime));
                 }
                 ii += 1;
             }
@@ -138,34 +144,40 @@ pub fn main_loop_s_mt(
         // println!("Time taken for dot product computations: {:?}\n", start_time.elapsed());
 
         // store current vectors in curv
-        for ii in 0..num_v {
-            let vec2 = &received_tokens[ii].1;
-            curv_result[ii].copy_from_slice(vec2);
+        curv_result = received_tokens;
 
-        }
         // std::thread::sleep(std::time::Duration::from_millis(1500));
 
         if last_save.elapsed().as_secs_f64() > save_after as f64 {
             println!("\nSaving...");
             let save_start = std::time::Instant::now();
-            // save_wdm_file(&wdm_filename, &a, theprime, &row_precond, &col_precond, &u, &v, &curv, &seq)?;
-            save_wdm_file_sym(&wdm_filename, &a, theprime, &row_precond, &col_precond, &v, &curv_result, &seq)?;
             last_save = std::time::Instant::now();
-            println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
+            match save_wdm_file_sym(&wdm_filename, &a, theprime, &row_precond, &col_precond, &v, &curv_result, &seq) {
+                Ok(_) => {
+                    println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
+                }
+                Err(e) => {
+                    eprintln!("Error saving state to file {}: {}", wdm_filename, e);
+                    //return Err(Box::new(e));
+                }
+            }
+            // std::thread::sleep(std::time::Duration::from_millis(500));
+            
+            // println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
         }
 
         if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
             // println!("Report");
-            let channel_fills: String = rxs.iter().map(|rx| {
-                let count = rx.try_iter().count();
-                format!("{} ", count)
-            }).collect::<String>();
-            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, &format!("Channel fill {}", channel_fills));
+            let fill_status: String = rxs.iter()
+                    .map(|rx| format!("{} ", rx.len()))
+                    .collect();
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, &format!("Channel fill status {}", fill_status));
             last_report = std::time::Instant::now();
             last_nlen = seq[0].len();
         }
     }
-    *curv = curv_result.clone();
+
+    *curv = curv_result;
     Ok(())
 
 }
@@ -287,12 +299,11 @@ fn main() {
     let duration = start_time.elapsed();
     println!("Time taken to load matrix: {:?}", duration);
     println!("Loaded matrix with {} rows and {} columns", a.n_rows, a.n_cols);
-    // let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
-    // let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
-    let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
-    let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
+    let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
+    let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
+    // let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
+    // let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
 
-    // let mut u: Vec<Vec<MyInt>> = (0..num_u).map(|_| create_random_vector(a.n_cols, prime)).collect();
     let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
     // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
     let mut curv: Vec<Vec<MyInt>> = v.clone();

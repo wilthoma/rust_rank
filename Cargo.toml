@@ -12,6 +12,7 @@ graph6-rs = "0.1"
 petgraph = "0.6"
 image = "0.24" 
 quickdiv = "0.1.1"
+crossbeam-channel = "0.5"
 
 [build]
 rustflags = ["-O", "-C", "target-cpu=native", "-C", "llvm-args=-ffast-math", "-C", "opt-level=3", "-C", "target-feature=+avx2,+fma"]
