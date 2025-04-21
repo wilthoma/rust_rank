@@ -270,6 +270,13 @@ fn main() {
                 .help("Clone the matrix for each worker thread. (Uses memory.)")
                 .action(clap::ArgAction::SetTrue)
         )
+        .arg(
+            Arg::new("transpose")
+                .long("transpose")
+                .required(false)
+                .help("Transpose the matrix.")
+                .action(clap::ArgAction::SetTrue)
+        )
         .get_matches();
 
     let filename = matches.get_one::<String>("filename").expect("Filename is required");
@@ -277,6 +284,7 @@ fn main() {
     let serial_matvmul = *matches.get_one::<bool>("serial_matvmul").unwrap_or(&false);
     let parallel_dot = *matches.get_one::<bool>("parallel_dot").unwrap_or(&false);
     let deep_clone = *matches.get_one::<bool>("clone").unwrap_or(&false);
+    let transpose_matrix = *matches.get_one::<bool>("transpose").unwrap_or(&false);
     let num_threads: usize = *matches.get_one::<usize>("num_threads").expect("Invalid number of threads");
     let mut prime: MyInt = *matches.get_one::<MyInt>("prime").unwrap_or(&THEPRIME);
     let mut max_nlen: usize = *matches.get_one::<usize>("maxnlen").unwrap_or(&0) as usize;
@@ -294,6 +302,9 @@ fn main() {
 
     let start_time = std::time::Instant::now();
     let mut a = load_csr_matrix_from_sms(filename).expect("Failed to load matrix");
+    if transpose_matrix {
+        a = a.transpose();
+    }
     // let a = std::sync::Arc::new(load_csr_matrix_from_sms(filename).expect("Failed to load matrix"));
     // let mut a = reorder_matrix(&a, "data/gra12_9.g6", "data/gra11_9.g6");
     let duration = start_time.elapsed();
@@ -309,7 +320,7 @@ fn main() {
     let mut curv: Vec<Vec<MyInt>> = v.clone();
     let mut seq: Vec<Vec<MyInt>> = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
 
-    let wdm_filename = format!("{}.wdm", filename); 
+    let wdm_filename = if transpose_matrix {format!("{}_t.wdm", filename) } else {format!("{}.wdm", filename)}; 
     // check if exists
     if std::path::Path::new(&wdm_filename).exists() && !overwrite {
         println!("Loading state from file {}...", &wdm_filename);
@@ -376,4 +387,5 @@ fn main() {
     let duration = start_time.elapsed();
     println!("Time taken for Berlekamp-Massey: {:?}", duration);
     println!("Berlekamp-Massey result: {:?}", bmres.len());
+    println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
 }
