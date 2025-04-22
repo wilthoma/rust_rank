@@ -101,7 +101,7 @@ pub fn main_loop_s_mt(
                         return;
                     };
                 }
-             } else {
+             } else { // same code, but version with serial matvecmul
                 local_curv = a.serial_sparse_matvec_mul(&local_curv, theprime);
 
                 for _ in 0..(to_be_produced/2) {
