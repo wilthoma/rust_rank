@@ -87,26 +87,26 @@ pub fn main_loop_s_mt(
         let a = if deep_clone_matrix { Arc::new(CsrMatrix::clone(&a)) } else { std::sync::Arc::clone(a) };
         let at = if deep_clone_matrix { Arc::new(CsrMatrix::clone(&at)) } else { std::sync::Arc::clone(at) };
         thread::spawn(move || {
-            // let tx = tx.clone();
-            let mut local_curv = local_curv;
 
             if use_matvmul_parallel {
-                local_curv = a.parallel_sparse_matvec_mul(&local_curv, theprime);
+                // we store curw=A^t (A^tA)^i v for the next iteration since ownership of (A^tA)^i v is lost by sending over the channel
+                let mut curw = a.parallel_sparse_matvec_mul(&local_curv, theprime);
 
                 for _ in 0..(to_be_produced/2) {
-                    let vec = at.parallel_sparse_matvec_mul(&local_curv, theprime);
-                    local_curv = a.parallel_sparse_matvec_mul(&vec, theprime);
+                    let vec = at.parallel_sparse_matvec_mul(&curw, theprime);
+                    curw = a.parallel_sparse_matvec_mul(&vec, theprime);
                     if tx.send(vec).is_err(){
                         eprintln!("Error sending token from worker {}", worker_id);
                         return;
                     };
                 }
-             } else { // same code, but version with serial matvecmul
-                local_curv = a.serial_sparse_matvec_mul(&local_curv, theprime);
+             } else { 
+                // same code, but version with serial matvecmul
+                let mut curw = a.serial_sparse_matvec_mul(&local_curv, theprime);
 
                 for _ in 0..(to_be_produced/2) {
-                    let vec = at.serial_sparse_matvec_mul(&local_curv, theprime);
-                    local_curv = a.serial_sparse_matvec_mul(&vec, theprime);
+                    let vec = at.serial_sparse_matvec_mul(&curw, theprime);
+                    curw = a.serial_sparse_matvec_mul(&vec, theprime);
                     if tx.send(vec).is_err(){
                         eprintln!("Error sending token from worker {}", worker_id);
                         return;
