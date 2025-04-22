@@ -554,6 +554,7 @@ impl CsrMatrix {
         })
     }
 
+
 }
 
 pub fn prettify_vect(v: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
