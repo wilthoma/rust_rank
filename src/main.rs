@@ -89,17 +89,29 @@ pub fn main_loop_s_mt(
         thread::spawn(move || {
             // let tx = tx.clone();
             let mut local_curv = local_curv;
-            for _ in 0..(to_be_produced/2) {
-                let vec = if use_matvmul_parallel {
-                    at.parallel_sparse_matvec_mul(&a.parallel_sparse_matvec_mul(&local_curv, theprime), theprime)
-                } else {
-                    at.serial_sparse_matvec_mul(&a.serial_sparse_matvec_mul(&local_curv, theprime), theprime)
-                };
-                if tx.send(vec.clone()).is_err(){
-                    eprintln!("Error sending token from worker {}", worker_id);
-                    return;
-                };
-                local_curv = vec;
+
+            if use_matvmul_parallel {
+                local_curv = a.parallel_sparse_matvec_mul(&local_curv, theprime);
+
+                for _ in 0..(to_be_produced/2) {
+                    let vec = at.parallel_sparse_matvec_mul(&local_curv, theprime);
+                    local_curv = a.parallel_sparse_matvec_mul(&vec, theprime);
+                    if tx.send(vec).is_err(){
+                        eprintln!("Error sending token from worker {}", worker_id);
+                        return;
+                    };
+                }
+             } else {
+                local_curv = a.serial_sparse_matvec_mul(&local_curv, theprime);
+
+                for _ in 0..(to_be_produced/2) {
+                    let vec = at.serial_sparse_matvec_mul(&local_curv, theprime);
+                    local_curv = a.serial_sparse_matvec_mul(&vec, theprime);
+                    if tx.send(vec).is_err(){
+                        eprintln!("Error sending token from worker {}", worker_id);
+                        return;
+                    };
+                }
             }
             // println!("Worker {} done", worker_id);
         })
