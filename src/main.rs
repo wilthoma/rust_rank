@@ -19,6 +19,10 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Sender, Receiver};
 use crossbeam_channel;
 use std::thread;
+use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
+use std::ops::{Add, AddAssign, Mul, Rem};
+use std::iter::Sum;
+use std::fmt::Display;
 
 // type MyInt = i64;
 
@@ -52,23 +56,27 @@ pub fn report_progress(
     std::io::stdout().flush().unwrap();
 }
 
-pub fn main_loop_s_mt(
-    a: &Arc<CsrMatrix>,
-    at: &Arc<CsrMatrix>,
-    row_precond: &[MyInt],
-    col_precond: &[MyInt],
-    curv: &mut Vec<Vec<MyInt>>,
-    v: &Vec<Vec<MyInt>>,
-    seq: &mut Vec<Vec<MyInt>>,
+pub fn main_loop_s_mt<T>(
+    a: &Arc<CsrMatrix<T>>,
+    at: &Arc<CsrMatrix<T>>,
+    row_precond: &[T],
+    col_precond: &[T],
+    curv: &mut Vec<Vec<T>>,
+    v: &Vec<Vec<T>>,
+    seq: &mut Vec<Vec<T>>,
     max_nlen: usize,
     wdm_filename: &str,
-    theprime: MyInt,
+    theprime: T,
     save_after: usize,
     use_matvmul_parallel: bool,
     use_vecp_parallel: bool,
     deep_clone_matrix: bool,
 
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error>> 
+where 
+    T: Display + SimdElement + AddAssign + From<i32> + Sum<T> + Copy + Mul<Output = T> + Add<Output = T> + Rem<Output = T> + Send + Sync + 'static
+    ,
+    {
 
     let start = std::time::Instant::now();
     let mut last_save = start;
@@ -157,7 +165,7 @@ pub fn main_loop_s_mt(
         // println!("Time taken for dot product computations: {:?}\n", start_time.elapsed());
 
         // store current vectors in curv
-        curv_result = received_tokens;
+        curv_result.clone_from_slice(&received_tokens);
 
         // std::thread::sleep(std::time::Duration::from_millis(1500));
 
@@ -165,7 +173,7 @@ pub fn main_loop_s_mt(
             println!("\nSaving...");
             let save_start = std::time::Instant::now();
             last_save = std::time::Instant::now();
-            match save_wdm_file_sym(&wdm_filename, &a, theprime, &row_precond, &col_precond, &v, &curv_result, &seq) {
+            match save_wdm_file_sym(&wdm_filename, a.n_rows, a.n_cols, theprime, &row_precond, &col_precond, &v, &curv_result, &seq) {
                 Ok(_) => {
                     println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
                 }
@@ -290,12 +298,20 @@ fn main() {
                 .help("Transpose the matrix.")
                 .action(clap::ArgAction::SetTrue)
         )
+        .arg(
+            Arg::new("benchmark")
+                .long("benchmark")
+                .required(false)
+                .help("Run matrix vector multiply benchmark, but no other computation.")
+                .action(clap::ArgAction::SetTrue)
+        )
         .get_matches();
 
     let filename = matches.get_one::<String>("filename").expect("Filename is required");
     let overwrite = *matches.get_one::<bool>("overwrite").unwrap_or(&false);
     let serial_matvmul = *matches.get_one::<bool>("serial_matvmul").unwrap_or(&false);
     let parallel_dot = *matches.get_one::<bool>("parallel_dot").unwrap_or(&false);
+    let benchmark = *matches.get_one::<bool>("benchmark").unwrap_or(&false);
     let deep_clone = *matches.get_one::<bool>("clone").unwrap_or(&false);
     let transpose_matrix = *matches.get_one::<bool>("transpose").unwrap_or(&false);
     let num_threads: usize = *matches.get_one::<usize>("num_threads").expect("Invalid number of threads");
@@ -314,7 +330,7 @@ fn main() {
     // load the matrix file
 
     let start_time = std::time::Instant::now();
-    let mut a = load_csr_matrix_from_sms(filename).expect("Failed to load matrix");
+    let mut a = CsrMatrix::load_csr_matrix_from_sms(filename, prime as i32).expect("Failed to load matrix");
     if transpose_matrix {
         a = a.transpose();
     }
@@ -324,12 +340,12 @@ fn main() {
     println!("Time taken to load matrix: {:?}", duration);
     println!("Loaded matrix with {} rows and {} columns", a.n_rows, a.n_cols);
 
-    let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
-    let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
+    let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime as i32);
+    let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime as i32);
     // let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
     // let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
 
-    let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
+    let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime as i32)).collect();
     // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
     let mut curv: Vec<Vec<MyInt>> = v.clone();
     let mut seq: Vec<Vec<MyInt>> = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
@@ -357,7 +373,7 @@ fn main() {
     }
 
     // check prime validity -- i.e., if with our custom simplifications we might run into overflows
-    if a.is_prime_valid(prime) {
+    if a.is_prime_valid(prime as i32, i64::MAX as i128) {
         println!("Prime number {} is valid, no overflows expected.", prime);
     } else {
         println!("Prime number {} is not valid, may result in overflows. Exiting...", prime);
@@ -369,8 +385,13 @@ fn main() {
     // println!("Gaussian elimination...");
     // AA.gaussian_elimination_markowitz(prime);
 
+    if benchmark
+    {   
+        println!("Running benchmark...");
+        a.normal_simd_speedtest( prime as i32);
+        return;
+    }
 
-    normal_simd_speedtest(&a, prime);
 
     // Check if already done with sequence computation
     if max_nlen > 0 && seq[0].len() >= max_nlen {

@@ -596,6 +596,7 @@ dependencies = [
  "crossbeam-channel",
  "graph6-rs",
  "image",
+ "num-traits",
  "petgraph",
  "quickdiv",
  "rand",

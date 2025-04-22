@@ -1,8 +1,9 @@
 
 use std::fs::File;
 use std::io::{self, BufRead, Write};
+use std::fmt::Display;
 
-use crate::matrices::{prettify_vect, CsrMatrix, MyInt};
+use crate::matrices::{prettify_vect, CsrMatrixOld, MyInt};
 
 /// This module contains code to read and write .wdm files.
 /// These are text files used to store progress in the computation of the Wiedemann sequence, that is,
@@ -19,7 +20,7 @@ use crate::matrices::{prettify_vect, CsrMatrix, MyInt};
 /// Load the state from a WDM file
 pub fn load_wdm_file(
     wdm_filename: &str,
-    a: &CsrMatrix, // the matrix is only needed to sanity check the dimensions 
+    a: &CsrMatrixOld, // the matrix is only needed to sanity check the dimensions 
     row_precond: &mut Vec<MyInt>,
     col_precond: &mut Vec<MyInt>,
     u: &mut Vec<MyInt>,
@@ -337,7 +338,7 @@ pub fn load_wdm_file_sym(
 /// Save the current state to the WDM file
 pub fn save_wdm_file(
     wdm_filename: &str,
-    a: &CsrMatrix,
+    a: &CsrMatrixOld,
     theprime: MyInt,
     row_precond: &[MyInt],
     col_precond: &[MyInt],
@@ -415,7 +416,7 @@ pub fn save_wdm_file(
 
 pub fn save_wdm_file2(
     wdm_filename: &str,
-    a: &CsrMatrix,
+    a: &CsrMatrixOld,
     theprime: MyInt,
     row_precond: &[MyInt],
     col_precond: &[MyInt],
@@ -508,16 +509,19 @@ pub fn save_wdm_file2(
 }
 
 
-pub fn save_wdm_file_sym(
+pub fn save_wdm_file_sym<T> (
     wdm_filename: &str,
-    a: &CsrMatrix,
-    theprime: MyInt,
-    row_precond: &[MyInt],
-    col_precond: &[MyInt],
-    v_list: &[Vec<MyInt>],
-    curv_list: &[Vec<MyInt>],
-    seq_list: &[Vec<MyInt>],
-) -> Result<(), Box<dyn std::error::Error>> {
+    n_rows : usize,
+    n_cols : usize,
+    theprime: T,
+    row_precond: &[T],
+    col_precond: &[T],
+    v_list: &[Vec<T>],
+    curv_list: &[Vec<T>],
+    seq_list: &[Vec<T>],
+) -> Result<(), Box<dyn std::error::Error>> 
+where T: Display 
+{
     let file = File::create(wdm_filename)?;
     // Use a buffered writer for improved performance
     let mut writer = io::BufWriter::new(file);
@@ -526,8 +530,8 @@ pub fn save_wdm_file_sym(
     writeln!(
         writer,
         "{} {} {} {} {}",
-        a.n_rows,
-        a.n_cols,
+        n_rows,
+        n_cols,
         theprime,
         seq_list[0].len(),
         v_list.len()

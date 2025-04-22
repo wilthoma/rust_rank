@@ -6,11 +6,13 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use rand::Rng;
 use std::cmp::{Ordering, min};
+use std::iter::Sum;
 use image::{ImageBuffer, Luma};
 use std::path::Path;
 use std::time::Instant;
 use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 use std::ops::{Add, AddAssign, Mul, Rem};
+use num_traits::Bounded;
 
 // use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
@@ -24,7 +26,7 @@ pub type MyIntx8 = Simd<MyInt, 8>; // i64x4
 
 /// Sparse matrix in Compressed Sparse Row (CSR) format
 #[derive(Clone, Debug)]
-pub struct CsrMatrix 
+pub struct CsrMatrixOld 
 {
     pub values: Vec<MyInt>,      // Non-zero values
     pub col_indices: Vec<usize>, // Column indices of values
@@ -34,7 +36,7 @@ pub struct CsrMatrix
 }
 
 #[derive(Clone, Debug)]
-pub struct CsrMatrix2<T>
+pub struct CsrMatrix<T>
 where
     T: SimdElement + Copy + Rem<Output = T>,
 {
@@ -62,9 +64,9 @@ fn modinv(a: MyInt, p: MyInt) -> MyInt {
     x1.rem_euclid(p)
 }
 
-impl CsrMatrix {
+impl CsrMatrixOld {
     /// Transposes the CSR matrix
-    pub fn transpose(&self) -> CsrMatrix {
+    pub fn transpose(&self) -> CsrMatrixOld {
         let mut nnz_per_col = vec![0; self.n_cols];
 
         // Step 1: Count non-zero elements per column
@@ -101,7 +103,7 @@ impl CsrMatrix {
             }
         }
 
-        CsrMatrix {
+        CsrMatrixOld {
             values: values_t,
             col_indices: col_indices_t,
             row_ptr: row_ptr_t,
@@ -543,7 +545,7 @@ impl CsrMatrix {
 
 
     /// Check whether two CSR matrices are the same
-    pub fn are_csr_matrices_equal(&self, matrix2: &CsrMatrix) -> bool {
+    pub fn are_csr_matrices_equal(&self, matrix2: &CsrMatrixOld) -> bool {
         let matrix1 = self;
         matrix1.n_rows == matrix2.n_rows &&
         matrix1.n_cols == matrix2.n_cols &&
@@ -618,7 +620,7 @@ pub fn prettify_vect(v: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
 }
 
 #[inline]
-pub fn serial_sparse_matvec_mul_chunk2(A:&CsrMatrix, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+pub fn serial_sparse_matvec_mul_chunk2(A:&CsrMatrixOld, vector: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
     assert_eq!(A.n_cols, vector.len(), "Matrix and vector dimensions must align.");
 
     // Parallel iterator over rows
@@ -670,7 +672,7 @@ pub fn dot_product_mod_p(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
 
 }
 
-pub fn dot_product_mod_p_parallel(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
+pub fn dot_product_mod_p_parallel_old(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
     let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
@@ -686,7 +688,7 @@ pub fn dot_product_mod_p_parallel(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> M
         .reduce(|| 0, |acc, chunk_sum| (acc + chunk_sum) ) % p
 }
 
-pub fn dot_product_mod_p_serial(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
+pub fn dot_product_mod_p_serial_old(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
     let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
@@ -703,9 +705,45 @@ pub fn dot_product_mod_p_serial(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyI
 }
 
 
+pub fn dot_product_mod_p_parallel<T>(vec1: &[T], vec2: &[T], theprime: T) -> T 
+where T: 
+Add<Output = T> +Mul<Output = T> + Copy + Rem<Output = T> + AddAssign + Send + Sync + From<i32>,{
+    assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
+
+    let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
+
+    vec1.par_chunks(chunk_size)
+        .zip(vec2.par_chunks(chunk_size))
+        .map(|(chunk1, chunk2)| {
+            chunk1.iter()
+                .zip(chunk2.iter())
+                .fold(T::from(0), |acc, (&x, &y)| acc + (x * y))
+                % theprime
+        })
+        .reduce(|| T::from(0), |acc, chunk_sum| (acc + chunk_sum) ) % theprime
+}
+
+pub fn dot_product_mod_p_serial<T>(vec1: &[T], vec2: &[T], theprime: T) -> T
+where T: 
+Copy + Rem<Output = T> + AddAssign + From<i32> + Sum<T> + Mul<Output = T> + Add<Output = T>,{
+    assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
+
+    let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
+
+    vec1.chunks(chunk_size)
+        .zip(vec2.chunks(chunk_size))
+        .map(|(chunk1, chunk2)| {
+            chunk1.iter()
+                .zip(chunk2.iter())
+                .fold(T::from(0), |acc, (&x, &y)| acc + (x * y))
+                % theprime
+        })
+        .sum::<T>() % theprime
+}
+
 
 /// Load a sparse matrix in SMS format from a file
-pub fn load_csr_matrix_from_sms(file_path: &str) -> Result<CsrMatrix, Box<dyn std::error::Error>> {
+pub fn load_csr_matrix_from_sms(file_path: &str) -> Result<CsrMatrixOld, Box<dyn std::error::Error>> {
 
     let file = File::open(file_path)?;
     let reader = io::BufReader::new(file);
@@ -758,7 +796,7 @@ pub fn load_csr_matrix_from_sms(file_path: &str) -> Result<CsrMatrix, Box<dyn st
         row_ptr.push(values.len());
     }
 
-    Ok(CsrMatrix {
+    Ok(CsrMatrixOld {
         values,
         col_indices,
         row_ptr,
@@ -769,20 +807,27 @@ pub fn load_csr_matrix_from_sms(file_path: &str) -> Result<CsrMatrix, Box<dyn st
 
 
 /// Create a random vector of given length with integer entries between 0 and `theprime`
-pub fn create_random_vector(length: usize, theprime: MyInt) -> Vec<MyInt> {
+pub fn create_random_vector_old(length: usize, theprime: MyInt) -> Vec<MyInt> {
     let mut rng = rand::rng();
     (0..length).map(|_| rng.random_range(0..(theprime as i64)) as MyInt).collect()
 }
-pub fn create_random_vector_nozero(length: usize, theprime: MyInt) -> Vec<MyInt> {
+pub fn create_random_vector_nozero_old(length: usize, theprime: MyInt) -> Vec<MyInt> {
     let mut rng = rand::rng();
     (0..length).map(|_| rng.random_range(1..(theprime as i64)) as MyInt).collect()
 }
 
-pub fn create_random_vector2<T>(length: usize, theprime: i32) -> Vec<T> 
+pub fn create_random_vector<T>(length: usize, theprime: i32) -> Vec<T> 
 where T : From<i32>, 
 {
     let mut rng = rand::rng();
     (0..length).map(|_| T::from( rng.random_range(0..theprime)) ).collect()
+}
+
+pub fn create_random_vector_nozero<T>(length: usize, theprime: i32) -> Vec<T> 
+where T : From<i32>, 
+{
+    let mut rng = rand::rng();
+    (0..length).map(|_| T::from( rng.random_range(1..theprime)) ).collect()
 }
 
 // pub fn create_random_vector_simd(length: usize, theprime: MyInt) -> Vec<MyIntx4> {
@@ -795,14 +840,14 @@ where T : From<i32>,
 //     .collect()
 // }
 pub fn create_random_vector_simd8(length: usize, theprime: MyInt) -> Vec<MyIntx8> {
-    let x1=create_random_vector(length, theprime);
-    let x2=create_random_vector(length, theprime);
-    let x3=create_random_vector(length, theprime);
-    let x0=create_random_vector(length, theprime);
-    let x4=create_random_vector(length, theprime);
-    let x5=create_random_vector(length, theprime);
-    let x6=create_random_vector(length, theprime);
-    let x7=create_random_vector(length, theprime);
+    let x1=create_random_vector_old(length, theprime);
+    let x2=create_random_vector_old(length, theprime);
+    let x3=create_random_vector_old(length, theprime);
+    let x0=create_random_vector_old(length, theprime);
+    let x4=create_random_vector_old(length, theprime);
+    let x5=create_random_vector_old(length, theprime);
+    let x6=create_random_vector_old(length, theprime);
+    let x7=create_random_vector_old(length, theprime);
     x0.iter().zip(&x1).zip(&x2).zip(&x3).zip(&x4).zip(&x5).zip(&x6).zip(&x7)
     .map(|(((((((a, b), c), d),e),f),g),h)| Simd::from_array([*a, *b, *c, *d, *e, *f, *g, *h]))
     .collect()
@@ -818,7 +863,7 @@ where
     LaneCount<LANES>: SupportedLaneCount,
 {
     // Generate one scalar vector per lane
-    let scalar_vectors: [Vec<T>; LANES] = std::array::from_fn(|lane| create_random_vector2(length, theprime));
+    let scalar_vectors: [Vec<T>; LANES] = std::array::from_fn(|lane| create_random_vector(length, theprime));
 
     (0..length)
         .map(|i| {
@@ -829,10 +874,10 @@ where
 }
 
 pub fn reorder_csr_matrix_by_keys(
-    matrix: &CsrMatrix,
+    matrix: &CsrMatrixOld,
     row_keys: &[usize],
     col_keys: &[usize],
-) -> CsrMatrix {
+) -> CsrMatrixOld {
     assert_eq!(matrix.n_rows, row_keys.len());
     assert_eq!(matrix.n_cols, col_keys.len());
 
@@ -880,7 +925,7 @@ pub fn reorder_csr_matrix_by_keys(
         new_row_ptr.push(new_values.len());
     }
 
-    CsrMatrix {
+    CsrMatrixOld {
         values: new_values,
         col_indices: new_col_indices,
         row_ptr: new_row_ptr,
@@ -891,7 +936,7 @@ pub fn reorder_csr_matrix_by_keys(
 
 
 pub fn spy_plot(
-    matrix: &CsrMatrix,
+    matrix: &CsrMatrixOld,
     filename: &str,
     height: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -923,13 +968,16 @@ pub fn spy_plot(
 }
 
 
-impl<T> CsrMatrix2<T> where
+impl<T> CsrMatrix<T> where
 T: SimdElement
 + Copy
 + From<i32>
 + Rem<Output = T>
 + Send
-+ Sync,
++ Sync
++ Add<Output = T>
++ AddAssign
++ Mul<Output = T>,
 {
     pub fn parallel_sparse_matvec_mul_simd<const LANES:usize>(&self, vector: &[Simd<T, LANES>], theprime: T) -> Vec<Simd<T, LANES>> 
     where
@@ -957,9 +1005,227 @@ Simd<T, LANES>: Copy
             sum % Simd::splat(theprime)
         }).collect()
     }
+
+    pub fn load_csr_matrix_from_sms(file_path: &str, theprime : i32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> {
+        let file = File::open(file_path)?;
+        let reader = io::BufReader::new(file);
+    
+        let mut values = Vec::new();
+        let mut col_indices = Vec::new();
+        let mut row_ptr = Vec::new();
+        let mut n_rows = 0;
+        let mut n_cols = 0;
+    
+        row_ptr.push(0); // Start of the first row
+    
+        for line in reader.lines() {
+            let line = line?;
+            let line = line.trim();
+    
+            if line.starts_with('%') || line.is_empty() {
+                // Skip comments or empty lines
+                continue;
+            }
+    
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() == 3 && n_rows <= 0 && n_cols <= 0 {
+                // Header line with dimensions
+                n_rows = parts[0].parse()?;
+                n_cols = parts[1].parse()?;
+                //let _non_zeros: usize = parts[2].parse()?; // Not used directly
+            } else if parts.len() == 3 {
+                // Matrix entry
+                let row: usize = parts[0].parse()?;
+                let col: usize = parts[1].parse()?;
+                let mut intvalue :i32 = parts[2].parse()?;
+                intvalue = intvalue % theprime;
+                if intvalue < 0 {
+                    intvalue += theprime;
+                }
+                let value: T = T::from(intvalue);
+
+    
+                if row<=0 || col<=0 {
+                    continue; // Skip invalid entries
+                }
+    
+                // Convert 1-based indexing to 0-based
+                while row_ptr.len() < row {
+                    row_ptr.push(values.len());
+                }
+    
+                values.push(value);
+                col_indices.push(col - 1);
+            }
+        }
+    
+        // Finalize row_ptr
+        while row_ptr.len() <= n_rows {
+            row_ptr.push(values.len());
+        }
+    
+        Ok(CsrMatrix {
+            values,
+            col_indices,
+            row_ptr,
+            n_rows,
+            n_cols,
+        })
+    }
+    
+    pub fn transpose(&self) -> CsrMatrix<T> {
+        let mut nnz_per_col = vec![0; self.n_cols];
+
+        // Step 1: Count non-zero elements per column
+        for &col in &self.col_indices {
+            nnz_per_col[col] += 1;
+        }
+
+        // Step 2: Compute row_ptr for transposed matrix
+        let mut row_ptr_t = vec![0; self.n_cols + 1];
+        for i in 0..self.n_cols {
+            row_ptr_t[i + 1] = row_ptr_t[i] + nnz_per_col[i];
+        }
+
+        // Step 3: Prepare space for transposed values and indices
+        let nnz = self.values.len();
+        let mut values_t = vec![T::from(0); nnz];
+        let mut col_indices_t = vec![0; nnz];
+
+        let mut next_insert_pos = row_ptr_t.clone();
+
+        // Step 4: Populate the transposed matrix
+        for row in 0..self.n_rows {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+
+            for idx in start..end {
+                let col = self.col_indices[idx];
+                let val = self.values[idx];
+
+                let insert_pos = next_insert_pos[col];
+                values_t[insert_pos] = val;
+                col_indices_t[insert_pos] = row;
+                next_insert_pos[col] += 1;
+            }
+        }
+
+        CsrMatrix {
+            values: values_t,
+            col_indices: col_indices_t,
+            row_ptr: row_ptr_t,
+            n_rows: self.n_cols,
+            n_cols: self.n_rows,
+        }
+    }
+
+    pub fn parallel_sparse_matvec_mul(&self, vector: &[T], theprime: T) -> Vec<T> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+        // Parallel iterator over rows
+        (0..self.n_rows).into_par_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+
+
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let sum = colis
+                .zip(&self.values[start..end])
+                .fold(T::from(0), |acc, (v, &val)| (acc + v * val)) % theprime;
+            sum
+        }).collect()
+    }
+
+    pub fn serial_sparse_matvec_mul(&self, vector: &[T], theprime: T) -> Vec<T> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+        (0..self.n_rows).into_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+
+
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let sum = colis
+                .zip(&self.values[start..end])
+                .fold(T::from(0), |acc, (v, &val)| (acc + v * val)) % theprime;
+            sum
+        }).collect()
+    }
+
+    /// Multiply a CSR matrix column-wise with the entries of a vector
+    /// The existing CSR matrix is updated in-place
+    pub fn scale_csr_matrix_columns(&mut self, vector: &[T], theprime: T) {
+        let matrix = self;
+        assert_eq!(matrix.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+
+        for i in 0..matrix.values.len() {
+            let col = matrix.col_indices[i];
+            matrix.values[i] = (matrix.values[i] * vector[col]) % theprime;
+        }
+    }
+    /// Multiply a CSR matrix row-wise with the entries of a vector
+    /// The existing CSR matrix is updated in-place
+    pub fn scale_csr_matrix_rows(&mut self, vector: &[T], theprime: T) {
+        let matrix = self;
+        assert_eq!(matrix.n_rows, vector.len(), "Matrix and vector dimensions must align.");
+
+        for row in 0..matrix.n_rows {
+            let start = matrix.row_ptr[row];
+            let end = matrix.row_ptr[row + 1];
+            for i in start..end {
+                if i>= matrix.values.len() {
+                    println!("{} {} {} {}", i, matrix.values.len(), matrix.row_ptr.len(), row);
+                }
+                let cc =matrix.values[i];
+                matrix.values[i] = (cc * vector[row]) % theprime;
+            }
+        }
+    }
+
+    pub fn is_prime_valid(&self, theprime: i32, max_t_value : i128) -> bool {
+        // compute row and column nnz
+        let mut row_nnz = vec![0; self.n_rows];
+        let mut col_nnz = vec![0; self.n_cols];
+
+        // Precompute row_nnz
+        for row in 0..self.n_rows {
+            row_nnz[row] = self.row_ptr[row + 1] - self.row_ptr[row];
+        }
+
+        // Precompute col_nnz
+        for &col in &self.col_indices {
+            col_nnz[col] += 1;
+        }
+
+        let prod = (theprime as i128) * (theprime as i128);
+        // let max_i64_value = T::max_value(); //std::i64::MAX as i128;
+        // check if prod * nnz <  std::i128::MAX for all entries
+        (prod * (DOT_PRODUCT_CHUNK_SIZE as i128) < max_t_value) && // chunk_size 100 for dot products assumed
+        row_nnz.iter().all( |&nnz| {
+            (nnz as i128) * prod < max_t_value
+        }) && 
+        col_nnz.iter().all( |&nnz| {
+            (nnz as i128) * prod < max_t_value
+        })
+    }
+
+    pub fn normal_simd_speedtest(&self, theprime : i32) {
+        let svector: Vec<Simd<i32, 4>> = create_random_vector_simd(self.n_cols, theprime);
+        let nvector = create_random_vector(self.n_cols, theprime);
+        for i in 0..10 {
+            let start = Instant::now();
+            let _result = A2.parallel_sparse_matvec_mul_simd(&svector, theprime);
+            let duration = start.elapsed();
+            println!("SIMD multiplication took: {:?}", duration);
+            let start = Instant::now();
+            let _result = A.parallel_sparse_matvec_mul(&nvector, theprime);
+            let duration = start.elapsed();
+            println!("Normal multiplication took: {:?}", duration);
+        }
+    }
+
+
 }
 
-pub fn csr2_from_csrmatrix<T>(matrix: &CsrMatrix) -> CsrMatrix2<T>
+pub fn csr2_from_csrmatrix<T>(matrix: &CsrMatrixOld) -> CsrMatrix<T>
 where 
 T: SimdElement
 + Copy
@@ -968,7 +1234,7 @@ T: SimdElement
 + Sync
 +From<i32>,
 {
-    CsrMatrix2 {
+    CsrMatrix {
         values: matrix.values.iter().map(|&v| T::from(v as i32)).collect(),
         col_indices: matrix.col_indices.clone(),
         row_ptr: matrix.row_ptr.clone(),
@@ -977,19 +1243,3 @@ T: SimdElement
     }
 }
 
-pub fn normal_simd_speedtest(A : &CsrMatrix, theprime : MyInt) {
-    let A2 = csr2_from_csrmatrix::<i32>(A);
-    let theprime2 : i32 = theprime as i32;
-    let svector: Vec<Simd<i32, 4>> = create_random_vector_simd(A.n_cols, theprime2);
-    let nvector = create_random_vector(A.n_cols, theprime);
-    for i in 0..10 {
-        let start = Instant::now();
-        let _result = A2.parallel_sparse_matvec_mul_simd(&svector, theprime2);
-        let duration = start.elapsed();
-        println!("SIMD multiplication took: {:?}", duration);
-        let start = Instant::now();
-        let _result = A.parallel_sparse_matvec_mul(&nvector, theprime);
-        let duration = start.elapsed();
-        println!("Normal multiplication took: {:?}", duration);
-    }
-}
