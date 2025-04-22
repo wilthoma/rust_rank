@@ -9,6 +9,8 @@ use std::path::Path;
 
 // use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
+const DOT_PRODUCT_CHUNK_SIZE: usize = 100;
+
 pub type MyInt = i64;
 // pub type MyInt = f64;
 
@@ -543,12 +545,12 @@ impl CsrMatrix {
         let prod = (theprime as i128) * (theprime as i128);
         let max_i64_value = std::i64::MAX as i128;
         // check if prod * nnz <  std::i128::MAX for all entries
-        (prod < max_i64_value) &&
+        (prod * (DOT_PRODUCT_CHUNK_SIZE as i128) < max_i64_value) && // chunk_size 100 for dot products assumed
         row_nnz.iter().all( |&nnz| {
-            (nnz as i128) * (prod) < max_i64_value
+            (nnz as i128) * prod < max_i64_value
         }) && 
         col_nnz.iter().all( |&nnz| {
-            (nnz as i128) * (prod) < max_i64_value
+            (nnz as i128) * prod < max_i64_value
         })
     }
 
@@ -614,7 +616,7 @@ pub fn dot_product_mod_p(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
 pub fn dot_product_mod_p_parallel(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
-    let chunk_size = 100;
+    let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
 
     vec1.par_chunks(chunk_size)
         .zip(vec2.par_chunks(chunk_size))
@@ -630,7 +632,7 @@ pub fn dot_product_mod_p_parallel(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> M
 pub fn dot_product_mod_p_serial(vec1: &[MyInt], vec2: &[MyInt], p: MyInt) -> MyInt {
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
-    let chunk_size = 100;
+    let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
 
     vec1.chunks(chunk_size)
         .zip(vec2.chunks(chunk_size))
