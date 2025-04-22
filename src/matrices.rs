@@ -525,7 +525,32 @@ impl CsrMatrix {
         }
     }
 
+    pub fn is_prime_valid(&self, theprime: MyInt) -> bool {
+        // compute row and column nnz
+        let mut row_nnz = vec![0; self.n_rows];
+        let mut col_nnz = vec![0; self.n_cols];
 
+        // Precompute row_nnz
+        for row in 0..self.n_rows {
+            row_nnz[row] = self.row_ptr[row + 1] - self.row_ptr[row];
+        }
+
+        // Precompute col_nnz
+        for &col in &self.col_indices {
+            col_nnz[col] += 1;
+        }
+
+        let prod = (theprime as i128) * (theprime as i128);
+        let max_i64_value = std::i64::MAX as i128;
+        // check if prod * nnz <  std::i128::MAX for all entries
+        (prod < max_i64_value) &&
+        row_nnz.iter().all( |&nnz| {
+            (nnz as i128) * (prod) < max_i64_value
+        }) && 
+        col_nnz.iter().all( |&nnz| {
+            (nnz as i128) * (prod) < max_i64_value
+        })
+    }
 
 }
 

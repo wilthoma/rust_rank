@@ -322,6 +322,7 @@ fn main() {
     let duration = start_time.elapsed();
     println!("Time taken to load matrix: {:?}", duration);
     println!("Loaded matrix with {} rows and {} columns", a.n_rows, a.n_cols);
+
     let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
     let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
     // let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
@@ -352,6 +353,14 @@ fn main() {
     if max_nlen <=0 {
         let d = min(a.n_cols, a.n_rows) as f32;
         max_nlen = (2.0 * d/(num_v as f32) + 4.0).floor() as usize; // 2* min(a.n_cols, a.n_rows);
+    }
+
+    // check prime validity -- i.e., if with our custom simplifications we might run into overflows
+    if a.is_prime_valid(prime) {
+        println!("Prime number {} is valid, no overflows expected.", prime);
+    } else {
+        println!("Prime number {} is not valid, may result in overflows. Exiting...", prime);
+        std::process::exit(1);
     }
 
     // test: gaussian elim
