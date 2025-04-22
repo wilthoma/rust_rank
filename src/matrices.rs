@@ -615,7 +615,8 @@ impl CsrMatrixOld {
 
 }
 
-pub fn prettify_vect(v: &[MyInt], theprime: MyInt) -> Vec<MyInt> {
+pub fn prettify_vect<T>(v: &[T], theprime: T) -> Vec<T> 
+where T:Add<Output = T> + Rem<Output = T> + Copy + From<i32>,{
     v.iter().map(|&x| (x + theprime) % theprime).collect()
 }
 
@@ -1207,16 +1208,23 @@ Simd<T, LANES>: Copy
         })
     }
 
-    pub fn normal_simd_speedtest(&self, theprime : i32) {
-        let svector: Vec<Simd<i32, 4>> = create_random_vector_simd(self.n_cols, theprime);
+    pub fn normal_simd_speedtest(&self, theprime : i32) 
+    where Simd<T, 4>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, 4>>
+    + AddAssign
+    + Mul<Output = Simd<T, 4>>
+    + Rem<Output = Simd<T, 4>>,{
+        let svector: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
         let nvector = create_random_vector(self.n_cols, theprime);
         for i in 0..10 {
             let start = Instant::now();
-            let _result = A2.parallel_sparse_matvec_mul_simd(&svector, theprime);
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector, T::from(theprime));
             let duration = start.elapsed();
             println!("SIMD multiplication took: {:?}", duration);
             let start = Instant::now();
-            let _result = A.parallel_sparse_matvec_mul(&nvector, theprime);
+            let _result = self.parallel_sparse_matvec_mul(&nvector, T::from(theprime));
             let duration = start.elapsed();
             println!("Normal multiplication took: {:?}", duration);
         }

@@ -418,7 +418,7 @@ fn main() {
             eprintln!("Error in main loop: {}", e);
             std::process::exit(1);
         } else {
-            save_wdm_file_sym(&wdm_filename, &a, prime, &row_precond, &col_precond, &v, &curv, &seq).expect("Couldn't save result...");
+            save_wdm_file_sym(&wdm_filename, a.n_rows, a.n_cols, prime, &row_precond, &col_precond, &v, &curv, &seq).expect("Couldn't save result...");
             println!("\nSaved state to file {} at sequence length {}.", wdm_filename, seq[0].len());
         }
     }

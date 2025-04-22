@@ -2,6 +2,7 @@
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::fmt::Display;
+use std::process::Output;
 
 use crate::matrices::{prettify_vect, CsrMatrixOld, MyInt};
 
@@ -518,9 +519,8 @@ pub fn save_wdm_file_sym<T> (
     col_precond: &[T],
     v_list: &[Vec<T>],
     curv_list: &[Vec<T>],
-    seq_list: &[Vec<T>],
-) -> Result<(), Box<dyn std::error::Error>> 
-where T: Display 
+    seq_list: &[Vec<T>], )
+where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T> 
 {
     let file = File::create(wdm_filename)?;
     // Use a buffered writer for improved performance
