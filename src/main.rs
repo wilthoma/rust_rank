@@ -1,5 +1,6 @@
 
 // #![feature(portable_simd)]
+#![feature(portable_simd)]
 
 mod matrices;
 mod graphs;
@@ -368,6 +369,9 @@ fn main() {
     // println!("Gaussian elimination...");
     // AA.gaussian_elimination_markowitz(prime);
 
+
+    normal_simd_speedtest(&a, prime);
+
     // Check if already done with sequence computation
     if max_nlen > 0 && seq[0].len() >= max_nlen {
         println!("Already computed {} entries, nothing to do.", seq[0].len());
@@ -409,4 +413,5 @@ fn main() {
     println!("Time taken for Berlekamp-Massey: {:?}", duration);
     println!("Berlekamp-Massey result: {:?}", bmres.len());
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
+
 }
