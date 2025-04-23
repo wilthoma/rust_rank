@@ -6,6 +6,7 @@ mod matrices;
 mod graphs;
 mod wdm_files;
 mod block_berlekamp_massey;
+mod blockbmtest;
 use block_berlekamp_massey::block_berlekamp_massey;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
 use wdm_files::{save_wdm_file_sym, load_wdm_file_sym};
