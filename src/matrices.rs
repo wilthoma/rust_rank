@@ -1,19 +1,23 @@
 
 
 
-use petgraph::csr::Csr;
+// use petgraph::csr::Csr;
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::{self, BufRead};
 use rand::Rng;
-use std::cmp::{Ordering, min};
+// use std::cmp::{Ordering, min};
 use std::iter::Sum;
 use image::{ImageBuffer, Luma};
 use std::path::Path;
 use std::time::Instant;
 use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 use std::ops::{Add, AddAssign, Mul, Rem};
-use num_traits::Bounded;
+// use num_traits::Bounded;
+
+
+// use std::alloc::{alloc_zeroed, Layout};
+// use std::ptr::NonNull;
 
 // use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
@@ -101,7 +105,7 @@ where
     LaneCount<LANES>: SupportedLaneCount,
 {
     // Generate one scalar vector per lane
-    let scalar_vectors: [Vec<T>; LANES] = std::array::from_fn(|lane| create_random_vector(length, theprime));
+    let scalar_vectors: [Vec<T>; LANES] = std::array::from_fn(| _ | create_random_vector(length, theprime));
 
     (0..length)
         .map(|i| {
@@ -110,6 +114,7 @@ where
         })
         .collect()
 }
+
 
 impl<T> CsrMatrix<T> where
 T: SimdElement
@@ -122,6 +127,49 @@ T: SimdElement
 + AddAssign
 + Mul<Output = T>,
 {
+    pub fn parallel_sparse_matvec_mul_simd2<const LANES: usize>(
+        &self,
+        vector: &[Simd<T, LANES>],
+        theprime: T,
+    ) -> Vec<Simd<T, LANES>>
+    where
+        LaneCount<LANES>: SupportedLaneCount,
+        Simd<T, LANES>: Copy
+            + Send
+            + Sync
+            + Add<Output = Simd<T, LANES>>
+            + AddAssign
+            + Mul<Output = Simd<T, LANES>>
+            + Rem<Output = Simd<T, LANES>>,
+        T: Copy + From<i32>,
+    {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+    
+        let mut result = vec![Simd::splat(T::from(0)); self.n_rows];
+    
+        result
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(row, out)| {
+                let start = self.row_ptr[row];
+                let end = self.row_ptr[row + 1];
+    
+                let sum = self.col_indices[start..end]
+                    .iter()
+                    .map(|&col| vector[col])
+                    .zip(&self.values[start..end])
+                    .fold(Simd::splat(T::from(0)), |acc, (v, &val)| {
+                        acc + v * Simd::splat(val)
+                    });
+    
+                *out = sum % Simd::splat(theprime);
+            });
+    
+        result
+    }
+
+
+
     pub fn parallel_sparse_matvec_mul_simd<const LANES:usize>(&self, vector: &[Simd<T, LANES>], theprime: T) -> Vec<Simd<T, LANES>> 
     where
 LaneCount<LANES>: SupportedLaneCount,
@@ -395,7 +443,7 @@ Simd<T, LANES>: Copy
         let svector8: Vec<Simd<T, 8>> = create_random_vector_simd(self.n_cols, theprime);
         let svector4: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
         let nvector = create_random_vector(self.n_cols, theprime);
-        for i in 0..n_reps {
+        for _ in 0..n_reps {
             let start = Instant::now();
             let _result = self.parallel_sparse_matvec_mul(&nvector, T::from(theprime));
             let duration = start.elapsed();
@@ -405,9 +453,17 @@ Simd<T, LANES>: Copy
             let duration = start.elapsed();
             println!("SIMD4 multiplication took: {:?}", duration);
             let start = Instant::now();
+            let _result = self.parallel_sparse_matvec_mul_simd2(&svector4, T::from(theprime));
+            let duration = start.elapsed();
+            println!("SIMD4 multiplication2 took: {:?}", duration);
+            let start = Instant::now();
             let _result = self.parallel_sparse_matvec_mul_simd(&svector8, T::from(theprime));
             let duration = start.elapsed();
             println!("SIMD8 multiplication took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.parallel_sparse_matvec_mul_simd2(&svector8, T::from(theprime));
+            let duration = start.elapsed();
+            println!("SIMD8 multiplication2 took: {:?}", duration);
         }
     }
 
@@ -429,7 +485,7 @@ Simd<T, LANES>: Copy
         let svector8: Vec<Simd<T, 8>> = create_random_vector_simd(self.n_cols, theprime);
         let svector4: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
         let nvector = create_random_vector(self.n_cols, theprime);
-        for i in 0..n_reps {
+        for _ in 0..n_reps {
             let start = Instant::now();
             let _result = self.serial_sparse_matvec_mul(&nvector, T::from(theprime));
             let duration = start.elapsed();
@@ -477,16 +533,16 @@ Simd<T, LANES>: Copy
         Ok(())
     }
 
-    pub fn from<S>(A : &CsrMatrix<S>) -> CsrMatrix<T>
+    pub fn from<S>(a : &CsrMatrix<S>) -> CsrMatrix<T>
     where S: SimdElement + Copy + From<i32> + Rem<Output = S> + Send + Sync + Add<Output = S> + AddAssign + Mul<Output = S>,
     T: From<S>
     {
         CsrMatrix {
-            values: A.values.iter().map(|&x| T::from(x)).collect(),
-            col_indices: A.col_indices.clone(),
-            row_ptr: A.row_ptr.clone(),
-            n_rows: A.n_rows,
-            n_cols: A.n_cols,
+            values: a.values.iter().map(|&x| T::from(x)).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
         }
     }
 
@@ -496,13 +552,13 @@ Simd<T, LANES>: Copy
 
 impl CsrMatrix<i64> {
     pub fn toi32(&self) -> CsrMatrix<i32> {
-        let A = self;
+        let a = self;
         CsrMatrix {
-            values: A.values.iter().map(|&x| x as i32).collect(),
-            col_indices: A.col_indices.clone(),
-            row_ptr: A.row_ptr.clone(),
-            n_rows: A.n_rows,
-            n_cols: A.n_cols,
+            values: a.values.iter().map(|&x| x as i32).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
         }
     }
 }

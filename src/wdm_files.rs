@@ -2,7 +2,7 @@
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::fmt::Display;
-use std::process::Output;
+// use std::process::Output;
 
 use crate::matrices::{prettify_vect, MyInt};
 

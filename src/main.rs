@@ -7,19 +7,17 @@ mod graphs;
 mod wdm_files;
 mod block_berlekamp_massey;
 use block_berlekamp_massey::block_berlekamp_massey;
-use image::buffer;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
 use wdm_files::{save_wdm_file_sym, load_wdm_file_sym};
-use graphs::count_triangles_in_file;
+// use graphs::count_triangles_in_file;
 use std::io::Write;
 use clap::{Arg, Command};
 use std::cmp::min;
-use rayon::prelude::*;
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{self, Sender, Receiver};
+// use rayon::prelude::*;
+use std::sync::Arc;
 use crossbeam_channel;
 use std::thread;
-use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
+use core::simd::SimdElement;
 use std::ops::{Add, AddAssign, Mul, Rem};
 use std::iter::Sum;
 use std::fmt::Display;
@@ -92,7 +90,7 @@ where
         (0..num_v).map(|_| crossbeam_channel::bounded(buffer_capacity)).unzip();
 
     // Update the worker threads to send only one vector
-    let workers: Vec<_> = txs.into_iter().enumerate().map(|(worker_id, tx)| {
+    let _workers: Vec<_> = txs.into_iter().enumerate().map(|(worker_id, tx)| {
         let local_curv = curv[worker_id].clone();
         let a = if deep_clone_matrix { Arc::new(CsrMatrix::clone(&a)) } else { std::sync::Arc::clone(a) };
         let at = if deep_clone_matrix { Arc::new(CsrMatrix::clone(&at)) } else { std::sync::Arc::clone(at) };
@@ -151,7 +149,7 @@ where
                 let vec1_prev = &curv_result[i];
                 let vec2 = &received_tokens[j];
 
-                if (use_vecp_parallel){
+                if use_vecp_parallel {
                     seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprime));
                     seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
                 }

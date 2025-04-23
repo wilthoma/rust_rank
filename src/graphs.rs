@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader};
 use graph6_rs::Graph as G6Graph;
 use petgraph::graph::UnGraph;
 
+#[allow(dead_code)]
 pub fn count_triangles_in_file(file_path: &str) -> std::io::Result<Vec<usize>> {
     let file = File::open(file_path)?;
     let reader = BufReader::new(file);
@@ -51,7 +52,7 @@ pub fn count_triangles_in_file(file_path: &str) -> std::io::Result<Vec<usize>> {
     Ok(triangle_counts)
 }
 
-fn count_triangles(graph: &UnGraph<(), ()>) -> usize {
+pub fn count_triangles(graph: &UnGraph<(), ()>) -> usize {
     let mut count = 0;
 
     for u in graph.node_indices() {
@@ -69,7 +70,7 @@ fn count_triangles(graph: &UnGraph<(), ()>) -> usize {
 }
 
 
-fn count_valences(graph: &UnGraph<(), ()>) -> usize {
+pub fn count_valences(graph: &UnGraph<(), ()>) -> usize {
     let mut v : Vec<usize> = Vec::new(); 
     let mut ret:usize = 0;
 
