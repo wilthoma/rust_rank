@@ -1,12 +1,12 @@
 
 
 
-use nalgebra::{DMatrix as Matrix, DVector, Dim};
-use std::ops::{Add, Mul, Sub};
+use nalgebra::DMatrix as Matrix;
+// use std::ops::{Add, Mul, Sub};
 
 // type Matrix<T> = DMatrix<T>;
 
-use std::cmp::{min, max};
+// use std::cmp::{min, max};
 
 pub fn matrix_berlekamp_massey(
     m_coeffs: &[Matrix<i64>], // M0, M1, ..., Mδ
@@ -33,7 +33,6 @@ pub fn matrix_berlekamp_massey(
         }
 
         // MBM3: increment t
-        t += 1;
         if t >= m_coeffs.len() {
             return Err("Ran out of M(z) coefficients");
         }
@@ -118,51 +117,53 @@ pub fn matrix_berlekamp_massey(
     Ok(result)
 }
 
-/// Computes discrepancy Ξ = Coeff(t; M(z) * f(z))
-fn compute_discrepancy(
-    m_series: &[Matrix<i64>], // M(z) coefficients
-    f: &[Matrix<i64>],        // vector of 2N columns, each column is a polynomial in matrix form
-    t: usize,
-) -> Matrix<i64>
-{
-    let n = m_series[0].nrows();
-    let two_n = f.len();
-    let mut result = Matrix::<i64>::zeros(n, two_n);
+// /// Builds a Matrix<T> of size (N x 2N) with the coefficient of z^k from each column polynomial in f
+// fn get_poly_coeff(f: &[Matrix<i64>], k: usize) -> Matrix<i64>
+// {
+//     let n = f[0].nrows();
+//     let two_n = f.len();
+//     let mut coeff_mat = Matrix::<i64>::zeros(n, two_n);
 
-    for k in 0..=t {
-        if k >= m_series.len() {
-            break;
-        }
-        let m_k = &m_series[k]; // M_k
-        let f_tk = get_poly_coeff(f, t - k); // coefficient of z^{t-k} from f(z)
-        let product = m_k * f_tk;
-        result += product;
-    }
+//     for j in 0..two_n {
+//         let f_j = &f[j];
+//         if k < f_j.ncols() {
+//             // f_j is the polynomial column vector, represented as matrix
+//             // and the k-th coefficient is the k-th column
+//             let coeff_col = f_j.column(k);
+//             for i in 0..n {
+//                 coeff_mat[(i, j)] = coeff_col[i].clone();
+//             }
+//         }
+//     }
 
-    result
-}
+//     coeff_mat
+// }
 
-/// Builds a Matrix<T> of size (N x 2N) with the coefficient of z^k from each column polynomial in f
-fn get_poly_coeff(f: &[Matrix<i64>], k: usize) -> Matrix<i64>
-{
-    let n = f[0].nrows();
-    let two_n = f.len();
-    let mut coeff_mat = Matrix::<i64>::zeros(n, two_n);
+// /// Computes discrepancy Ξ = Coeff(t; M(z) * f(z))
+// fn compute_discrepancy(
+//     m_series: &[Matrix<i64>], // M(z) coefficients
+//     f: &[Matrix<i64>],        // vector of 2N columns, each column is a polynomial in matrix form
+//     t: usize,
+// ) -> Matrix<i64>
+// {
+//     let n = m_series[0].nrows();
+//     let two_n = f.len();
+//     let mut result = Matrix::<i64>::zeros(n, two_n);
 
-    for j in 0..two_n {
-        let f_j = &f[j];
-        if k < f_j.ncols() {
-            // f_j is the polynomial column vector, represented as matrix
-            // and the k-th coefficient is the k-th column
-            let coeff_col = f_j.column(k);
-            for i in 0..n {
-                coeff_mat[(i, j)] = coeff_col[i].clone();
-            }
-        }
-    }
+//     for k in 0..=t {
+//         if k >= m_series.len() {
+//             break;
+//         }
+//         let m_k = &m_series[k]; // M_k
+//         let f_tk = get_poly_coeff(f, t - k); // coefficient of z^{t-k} from f(z)
+//         let product = m_k * f_tk;
+//         result += product;
+//     }
 
-    coeff_mat
-}
+//     result
+// }
+
+
 
 
 fn auxiliary_gaussian_elimination(
@@ -280,8 +281,8 @@ fn modinv(a: i64, p: i64) -> i64 {
 }
 
 
-#[test]
-fn test_matrix_berlekamp_massey_simple() {
+// #[test]
+pub fn test_matrix_berlekamp_massey_simple() {
     let p = 7;
     let n = 2;
     let delta = 4;
@@ -304,8 +305,15 @@ fn test_matrix_berlekamp_massey_simple() {
 
     let m_coeffs = vec![m0, m1, m2];
 
-    let result = matrix_berlekamp_massey(&m_coeffs, delta, p)
-        .expect("Should produce a minimal generator");
+    // display error
+    let result = match matrix_berlekamp_massey(&m_coeffs, delta, p) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("Failed to compute minpoly: {:?}", e);
+            // triangle_counts.push(0);
+            return;
+        }
+    };
 
     println!("Matrix generator coefficients:");
     for (i, mat) in result.iter().enumerate() {

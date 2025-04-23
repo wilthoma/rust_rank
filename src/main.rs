@@ -7,6 +7,7 @@ mod graphs;
 mod wdm_files;
 mod block_berlekamp_massey;
 mod blockbmtest;
+use blockbmtest::test_matrix_berlekamp_massey_simple;
 use block_berlekamp_massey::block_berlekamp_massey;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
 use wdm_files::{save_wdm_file_sym, load_wdm_file_sym};
@@ -453,5 +454,7 @@ fn main() {
     println!("Time taken for Berlekamp-Massey: {:?}", duration);
     println!("Berlekamp-Massey result: {:?}", bmres.len());
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
+
+    test_matrix_berlekamp_massey_simple();
 
 }

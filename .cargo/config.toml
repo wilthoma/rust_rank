@@ -1,2 +1,4 @@
 [build]
-rustflags = ["-O", "-C", "target-cpu=native", "-C", "opt-level=3"]
+rustflags = ["-O", "-C", "target-cpu=native", "-C", "opt-level=3", "-C", "target-feature=+v8.7a,+neon"]
+
+# ,+avx2,+fma
