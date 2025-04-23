@@ -1208,7 +1208,7 @@ Simd<T, LANES>: Copy
         })
     }
 
-    pub fn normal_simd_speedtest(&self, theprime : i32) 
+    pub fn normal_simd_speedtest(&self, theprime : i32, n_reps: usize) 
     where Simd<T, 4>: Copy
     + Send
     + Sync
@@ -1216,17 +1216,22 @@ Simd<T, LANES>: Copy
     + AddAssign
     + Mul<Output = Simd<T, 4>>
     + Rem<Output = Simd<T, 4>>,{
-        let svector: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
+        let svector8: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
+        let svector4: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
         let nvector = create_random_vector(self.n_cols, theprime);
-        for i in 0..10 {
-            let start = Instant::now();
-            let _result = self.parallel_sparse_matvec_mul_simd(&svector, T::from(theprime));
-            let duration = start.elapsed();
-            println!("SIMD multiplication took: {:?}", duration);
+        for i in 0..n_reps {
             let start = Instant::now();
             let _result = self.parallel_sparse_matvec_mul(&nvector, T::from(theprime));
             let duration = start.elapsed();
             println!("Normal multiplication took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector4, T::from(theprime));
+            let duration = start.elapsed();
+            println!("SIMD4 multiplication took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector8, T::from(theprime));
+            let duration = start.elapsed();
+            println!("SIMD4 multiplication took: {:?}", duration);
         }
     }
 

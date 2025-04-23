@@ -388,7 +388,7 @@ fn main() {
     if benchmark
     {   
         println!("Running benchmark...");
-        a.normal_simd_speedtest( prime as i32);
+        a.normal_simd_speedtest( prime as i32, 3);
         return;
     }
 
