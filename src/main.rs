@@ -27,6 +27,7 @@ use std::fmt::Display;
 // type MyInt = i64;
 
 const THEPRIME: MyInt = 27644437 as MyInt; // A large prime number for modular arithmetic
+const THESMALLPRIME : i32 = 5669;
 
 const REPORT_AFTER: f64 = 1.0; // seconds
 
@@ -330,7 +331,7 @@ fn main() {
     // load the matrix file
 
     let start_time = std::time::Instant::now();
-    let mut a = CsrMatrix::load_csr_matrix_from_sms(filename, prime as i32).expect("Failed to load matrix");
+    let mut a:CsrMatrix<MyInt> = CsrMatrix::load_csr_matrix_from_sms(filename, prime as i32).expect("Failed to load matrix");
     if transpose_matrix {
         a = a.transpose();
     }
@@ -387,8 +388,17 @@ fn main() {
 
     if benchmark
     {   
-        println!("Running benchmark...");
-        a.normal_simd_speedtest( prime as i32, 3);
+        println!("Running benchmark i64...");
+        a.normal_simd_speedtest( THESMALLPRIME, 3);
+        println!("Running benchmark i32...");
+        let aa : CsrMatrix<i32> = a.toi32();
+        aa.normal_simd_speedtest( THESMALLPRIME, 3);
+        let at = a.transpose();
+        println!("Running benchmark i64 (transpose)...");
+        at.normal_simd_speedtest( THESMALLPRIME, 3);
+        println!("Running benchmark i32 (transpose)...");
+        let aat : CsrMatrix<i32> = at.toi32();
+        aat.normal_simd_speedtest( THESMALLPRIME, 3);
         return;
     }
 
