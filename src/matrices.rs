@@ -23,8 +23,6 @@ use std::ops::{Add, AddAssign, Mul, Rem};
 
 const DOT_PRODUCT_CHUNK_SIZE: usize = 100;
 
-pub type MyInt = i64;
-
 /// Sparse matrix in Compressed Sparse Row (CSR) format
 #[derive(Clone, Debug)]
 pub struct CsrMatrix<T>
@@ -39,15 +37,16 @@ where
 }
 
 
-pub fn prettify_vect<T>(v: &[T], theprime: T) -> Vec<T> 
-where T:Add<Output = T> + Rem<Output = T> + Copy + From<i32>,{
+pub fn prettify_vect<T>(v: &[T], theprime: u32) -> Vec<T> 
+where T:Add<Output = T> + Rem<Output = T> + Copy + From<u32>,{
+    let theprime= T::from(theprime);
     v.iter().map(|&x| (x + theprime) % theprime).collect()
 }
 
 
 pub fn dot_product_mod_p_parallel<T>(vec1: &[T], vec2: &[T], theprime: T) -> T 
 where T: 
-Add<Output = T> +Mul<Output = T> + Copy + Rem<Output = T> + AddAssign + Send + Sync + From<i32>,{
+Add<Output = T> +Mul<Output = T> + Copy + Rem<Output = T> + AddAssign + Send + Sync + From<u32>,{
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
     let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
@@ -65,7 +64,7 @@ Add<Output = T> +Mul<Output = T> + Copy + Rem<Output = T> + AddAssign + Send + S
 
 pub fn dot_product_mod_p_serial<T>(vec1: &[T], vec2: &[T], theprime: T) -> T
 where T: 
-Copy + Rem<Output = T> + AddAssign + From<i32> + Sum<T> + Mul<Output = T> + Add<Output = T>,{
+Copy + Rem<Output = T> + AddAssign + From<u32> + Sum<T> + Mul<Output = T> + Add<Output = T>,{
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
     let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
@@ -81,15 +80,15 @@ Copy + Rem<Output = T> + AddAssign + From<i32> + Sum<T> + Mul<Output = T> + Add<
         .sum::<T>() % theprime
 }
 
-pub fn create_random_vector<T>(length: usize, theprime: i32) -> Vec<T> 
-where T : From<i32>, 
+pub fn create_random_vector<T>(length: usize, theprime: u32) -> Vec<T> 
+where T : From<u32>, 
 {
     let mut rng = rand::rng();
     (0..length).map(|_| T::from( rng.random_range(0..theprime)) ).collect()
 }
 
-pub fn create_random_vector_nozero<T>(length: usize, theprime: i32) -> Vec<T> 
-where T : From<i32>, 
+pub fn create_random_vector_nozero<T>(length: usize, theprime: u32) -> Vec<T> 
+where T : From<u32>, 
 {
     let mut rng = rand::rng();
     (0..length).map(|_| T::from( rng.random_range(1..theprime)) ).collect()
@@ -97,11 +96,11 @@ where T : From<i32>,
 
 pub fn create_random_vector_simd<T, const LANES: usize>(
     length: usize,
-    theprime: i32,
+    theprime: u32,
     // mut scalar_gen: impl FnMut(usize, T) -> Vec<T>,
 ) -> Vec<Simd<T, LANES>>
 where
-    T: SimdElement + Copy+ From<i32>,
+    T: SimdElement + Copy+ From<u32>,
     LaneCount<LANES>: SupportedLaneCount,
 {
     // Generate one scalar vector per lane
@@ -119,7 +118,7 @@ where
 impl<T> CsrMatrix<T> where
 T: SimdElement
 + Copy
-+ From<i32>
++ From<u32>
 + Rem<Output = T>
 + Send
 + Sync
@@ -141,7 +140,7 @@ T: SimdElement
             + AddAssign
             + Mul<Output = Simd<T, LANES>>
             + Rem<Output = Simd<T, LANES>>,
-        T: Copy + From<i32>,
+        T: Copy + From<u32>,
     {
         assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
     
@@ -224,7 +223,7 @@ Simd<T, LANES>: Copy
         }).collect()
     }
 
-    pub fn load_csr_matrix_from_sms(file_path: &str, theprime : i32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> {
+    pub fn load_csr_matrix_from_sms(file_path: &str, theprime : u32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> {
         let file = File::open(file_path)?;
         let reader = io::BufReader::new(file);
     
@@ -255,12 +254,13 @@ Simd<T, LANES>: Copy
                 // Matrix entry
                 let row: usize = parts[0].parse()?;
                 let col: usize = parts[1].parse()?;
+                let theprimei = theprime as i32;
                 let mut intvalue :i32 = parts[2].parse()?;
-                intvalue = intvalue % theprime;
+                intvalue = intvalue % theprimei;
                 if intvalue < 0 {
-                    intvalue += theprime;
+                    intvalue += theprimei;
                 }
-                let value: T = T::from(intvalue);
+                let value: T = T::from(intvalue as u32);
 
     
                 if row<=0 || col<=0 {
@@ -370,10 +370,10 @@ Simd<T, LANES>: Copy
 
     /// Multiply a CSR matrix column-wise with the entries of a vector
     /// The existing CSR matrix is updated in-place
-    pub fn scale_csr_matrix_columns(&mut self, vector: &[T], theprime: T) {
+    pub fn scale_csr_matrix_columns(&mut self, vector: &[T], theprime: u32) {
         let matrix = self;
         assert_eq!(matrix.n_cols, vector.len(), "Matrix and vector dimensions must align.");
-
+        let theprime = T::from(theprime);
         for i in 0..matrix.values.len() {
             let col = matrix.col_indices[i];
             matrix.values[i] = (matrix.values[i] * vector[col]) % theprime;
@@ -381,9 +381,10 @@ Simd<T, LANES>: Copy
     }
     /// Multiply a CSR matrix row-wise with the entries of a vector
     /// The existing CSR matrix is updated in-place
-    pub fn scale_csr_matrix_rows(&mut self, vector: &[T], theprime: T) {
+    pub fn scale_csr_matrix_rows(&mut self, vector: &[T], theprime: u32) {
         let matrix = self;
         assert_eq!(matrix.n_rows, vector.len(), "Matrix and vector dimensions must align.");
+        let theprime = T::from(theprime);
 
         for row in 0..matrix.n_rows {
             let start = matrix.row_ptr[row];
@@ -398,7 +399,7 @@ Simd<T, LANES>: Copy
         }
     }
 
-    pub fn is_prime_valid(&self, theprime: i32, max_t_value : i128) -> bool {
+    pub fn is_prime_valid(&self, theprime: u32, max_t_value : i128) -> bool {
         // compute row and column nnz
         let mut row_nnz = vec![0; self.n_rows];
         let mut col_nnz = vec![0; self.n_cols];
@@ -425,7 +426,7 @@ Simd<T, LANES>: Copy
         })
     }
 
-    pub fn normal_simd_speedtest(&self, theprime : i32, n_reps: usize) 
+    pub fn normal_simd_speedtest(&self, theprime : u32, n_reps: usize) 
     where Simd<T, 4>: Copy
     + Send
     + Sync
@@ -467,7 +468,7 @@ Simd<T, LANES>: Copy
         }
     }
 
-    pub fn normal_simd_speedtest_serial(&self, theprime : i32, n_reps: usize) 
+    pub fn normal_simd_speedtest_serial(&self, theprime : u32, n_reps: usize) 
     where Simd<T, 4>: Copy
     + Send
     + Sync
@@ -534,7 +535,7 @@ Simd<T, LANES>: Copy
     }
 
     pub fn from<S>(a : &CsrMatrix<S>) -> CsrMatrix<T>
-    where S: SimdElement + Copy + From<i32> + Rem<Output = S> + Send + Sync + Add<Output = S> + AddAssign + Mul<Output = S>,
+    where S: SimdElement + Copy + From<u32> + Rem<Output = S> + Send + Sync + Add<Output = S> + AddAssign + Mul<Output = S>,
     T: From<S>
     {
         CsrMatrix {
@@ -563,4 +564,34 @@ impl CsrMatrix<i64> {
     }
 }
 
+impl CsrMatrix<u64> {
+    pub fn tou32(&self) -> CsrMatrix<u32> {
+        let a = self;
+        CsrMatrix {
+            values: a.values.iter().map(|&x| x as u32).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
+        }
+    }
+    pub fn tou64(&self) -> CsrMatrix<u64> {
+        self.clone()
+    }
+}
 
+impl CsrMatrix<u32> {
+    pub fn tou64(&self) -> CsrMatrix<u64> {
+        let a = self;
+        CsrMatrix {
+            values: a.values.iter().map(|&x| x as u64).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
+        }
+    }
+    pub fn tou32(&self) -> CsrMatrix<u32> {
+        self.clone()
+    }
+}

@@ -22,10 +22,12 @@ use std::ops::{Add, AddAssign, Mul, Rem};
 use std::iter::Sum;
 use std::fmt::Display;
 
-// type MyInt = i64;
+// type MyInt = u64;
+type MyInt = u32;
 
-const THEPRIME: MyInt = 27644437 as MyInt; // A large prime number for modular arithmetic
-const THESMALLPRIME : i32 = 5669;
+const THEPRIME: u32 = 27644437; // A large prime number for modular arithmetic
+const THESMALLPRIME : u32 = 6481;
+// const THESMALLPRIME : u32 = 5669;
 
 const REPORT_AFTER: f64 = 1.0; // seconds
 
@@ -65,7 +67,7 @@ pub fn main_loop_s_mt<T>(
     seq: &mut Vec<Vec<T>>,
     max_nlen: usize,
     wdm_filename: &str,
-    theprime: T,
+    theprime: u32,
     save_after: usize,
     use_matvmul_parallel: bool,
     use_vecp_parallel: bool,
@@ -73,7 +75,7 @@ pub fn main_loop_s_mt<T>(
 
 ) -> Result<(), Box<dyn std::error::Error>> 
 where 
-    T: Display + SimdElement + AddAssign + From<i32> + Sum<T> + Copy + Mul<Output = T> + Add<Output = T> + Rem<Output = T> + Send + Sync + 'static
+    T: Display + SimdElement + AddAssign + From<u32> + Sum<T> + Copy + Mul<Output = T> + Add<Output = T> + Rem<Output = T> + Send + Sync + 'static
     ,
     {
 
@@ -83,6 +85,7 @@ where
     let mut last_nlen = seq[0].len();
     let mut curv_result  = curv.clone();
     let to_be_produced = max_nlen - seq[0].len();
+    let theprimet = T::from(theprime);
     //let mut tmpv = vec![0; a.n_rows];
     let num_v = v.len();
     let buffer_capacity = 10;
@@ -98,11 +101,11 @@ where
 
             if use_matvmul_parallel {
                 // we store curw=A^t (A^tA)^i v for the next iteration since ownership of (A^tA)^i v is lost by sending over the channel
-                let mut curw = a.parallel_sparse_matvec_mul(&local_curv, theprime);
+                let mut curw = a.parallel_sparse_matvec_mul(&local_curv, theprimet);
 
                 for _ in 0..(to_be_produced/2) {
-                    let vec = at.parallel_sparse_matvec_mul(&curw, theprime);
-                    curw = a.parallel_sparse_matvec_mul(&vec, theprime);
+                    let vec = at.parallel_sparse_matvec_mul(&curw, theprimet);
+                    curw = a.parallel_sparse_matvec_mul(&vec, theprimet);
                     if tx.send(vec).is_err(){
                         eprintln!("Error sending token from worker {}", worker_id);
                         return;
@@ -110,11 +113,11 @@ where
                 }
              } else { 
                 // same code, but version with serial matvecmul
-                let mut curw = a.serial_sparse_matvec_mul(&local_curv, theprime);
+                let mut curw = a.serial_sparse_matvec_mul(&local_curv, theprimet);
 
                 for _ in 0..(to_be_produced/2) {
-                    let vec = at.serial_sparse_matvec_mul(&curw, theprime);
-                    curw = a.serial_sparse_matvec_mul(&vec, theprime);
+                    let vec = at.serial_sparse_matvec_mul(&curw, theprimet);
+                    curw = a.serial_sparse_matvec_mul(&vec, theprimet);
                     if tx.send(vec).is_err(){
                         eprintln!("Error sending token from worker {}", worker_id);
                         return;
@@ -150,12 +153,12 @@ where
                 let vec2 = &received_tokens[j];
 
                 if use_vecp_parallel {
-                    seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprime));
-                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprimet));
+                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprimet));
                 }
                 else {
-                    seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprime));
-                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprimet));
+                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprimet));
                 }
                 ii += 1;
             }
@@ -256,9 +259,10 @@ fn main() {
                 .short('p')
                 .long("prime")
                 .help("The prime number to use for modular arithmetic")
-                .value_parser(clap::value_parser!(MyInt))
+                .value_parser(clap::value_parser!(u32))
                 .value_name("PRIME")
-                .default_value("27644437"),
+                //.default_value("27644437")
+                ,
         )
         .arg(
             Arg::new("num_v")
@@ -314,7 +318,8 @@ fn main() {
     let deep_clone = *matches.get_one::<bool>("clone").unwrap_or(&false);
     let transpose_matrix = *matches.get_one::<bool>("transpose").unwrap_or(&false);
     let num_threads: usize = *matches.get_one::<usize>("num_threads").expect("Invalid number of threads");
-    let mut prime: MyInt = *matches.get_one::<MyInt>("prime").unwrap_or(&THEPRIME);
+    let default_prime = if (MyInt::max_value() as u128) < (THEPRIME as u128)* (THEPRIME as u128) {THESMALLPRIME} else {THEPRIME};
+    let mut prime: u32 = *matches.get_one::<u32>("prime").unwrap_or(&default_prime);
     let mut max_nlen: usize = *matches.get_one::<usize>("maxnlen").unwrap_or(&0) as usize;
     let save_after: usize = *matches.get_one::<usize>("saveafter").unwrap_or(&200);
     // let mut num_u: usize = *matches.get_one::<usize>("num_u").unwrap_or(&1);
@@ -329,7 +334,7 @@ fn main() {
     // load the matrix file
 
     let start_time = std::time::Instant::now();
-    let mut a:CsrMatrix<MyInt> = CsrMatrix::load_csr_matrix_from_sms(filename, prime as i32).expect("Failed to load matrix");
+    let mut a:CsrMatrix<MyInt> = CsrMatrix::load_csr_matrix_from_sms(filename, prime ).expect("Failed to load matrix");
     if transpose_matrix {
         a = a.transpose();
     }
@@ -339,12 +344,12 @@ fn main() {
     println!("Time taken to load matrix: {:?}", duration);
     println!("Loaded matrix with {} rows and {} columns", a.n_rows, a.n_cols);
 
-    let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime as i32);
-    let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime as i32);
+    let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
+    let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
     // let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
     // let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
 
-    let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime as i32)).collect();
+    let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
     // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
     let mut curv: Vec<Vec<MyInt>> = v.clone();
     let mut seq: Vec<Vec<MyInt>> = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
@@ -372,7 +377,7 @@ fn main() {
     }
 
     // check prime validity -- i.e., if with our custom simplifications we might run into overflows
-    if a.is_prime_valid(prime as i32, i64::MAX as i128) {
+    if a.is_prime_valid(prime, MyInt::max_value() as i128) {
         println!("Prime number {} is valid, no overflows expected.", prime);
     } else {
         println!("Prime number {} is not valid, may result in overflows. Exiting...", prime);
@@ -386,11 +391,12 @@ fn main() {
 
     if benchmark
     {   
+        let a = a.tou64();
         println!("Running benchmark i64...");
         a.normal_simd_speedtest( THESMALLPRIME, 3);
         a.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         println!("Running benchmark i32...");
-        let aa : CsrMatrix<i32> = a.toi32();
+        let aa : CsrMatrix<u32> = a.tou32();
         aa.normal_simd_speedtest( THESMALLPRIME, 3);
         aa.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         let at = a.transpose();
@@ -398,7 +404,7 @@ fn main() {
         at.normal_simd_speedtest( THESMALLPRIME, 3);
         at.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         println!("Running benchmark i32 (transpose)...");
-        let aat : CsrMatrix<i32> = at.toi32();
+        let aat : CsrMatrix<u32> = at.tou32();
         aat.normal_simd_speedtest( THESMALLPRIME, 3);
         aat.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         return;

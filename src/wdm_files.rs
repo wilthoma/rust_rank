@@ -2,9 +2,10 @@
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::fmt::Display;
+use std::str::FromStr;
 // use std::process::Output;
 
-use crate::matrices::{prettify_vect, MyInt};
+use crate::matrices::prettify_vect;
 
 /// This module contains code to read and write .wdm files.
 /// These are text files used to store progress in the computation of the Wiedemann sequence, that is,
@@ -18,14 +19,17 @@ use crate::matrices::{prettify_vect, MyInt};
 /// 7. Next num_v x (num_v+1)/2 lines: seq -- the Wiedemann sequence M_k = V^T(A^TA)^{k} V for k=1,2,3...,N. 
 
 
-pub fn load_wdm_file_sym(
+pub fn load_wdm_file_sym<T>(
     wdm_filename: &str,
-    row_precond: &mut Vec<MyInt>,
-    col_precond: &mut Vec<MyInt>,
-    v_list: &mut Vec<Vec<MyInt>>,
-    curv_list: &mut Vec<Vec<MyInt>>,
-    seq_list: &mut Vec<Vec<MyInt>>,
-) -> Result<(MyInt, usize, usize, usize), Box<dyn std::error::Error>> {
+    row_precond: &mut Vec<T>,
+    col_precond: &mut Vec<T>,
+    v_list: &mut Vec<Vec<T>>,
+    curv_list: &mut Vec<Vec<T>>,
+    seq_list: &mut Vec<Vec<T>>,
+) -> Result<(u32, usize, usize, usize), Box<dyn std::error::Error>> 
+where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T> + From<u32> + std::str::FromStr,
+<T as FromStr>::Err: std::error::Error + 'static
+{
     let file = File::open(wdm_filename)?;
     let mut reader = io::BufReader::new(file);
 
@@ -35,21 +39,16 @@ pub fn load_wdm_file_sym(
     let mut parts = line.split_whitespace();
     let m: usize = parts.next().ok_or("Missing m")?.parse()?;
     let n: usize = parts.next().ok_or("Missing n")?.parse()?;
-    let p: MyInt = parts.next().ok_or("Missing p")?.parse()?;
+    let p: u32 = parts.next().ok_or("Missing p")?.parse()?;
     let nlen: usize = parts.next().ok_or("Missing Nlen")?.parse()?;
     let num_v: usize = parts.next().ok_or("Missing num_v")?.parse()?;
-
-    // Check if matrix dimensions match
-    // if m != a.n_rows || n != a.n_cols {
-    //     return Err("Matrix dimensions do not match with content of WDM file".into());
-    // }
 
     // Read row_precond
     line.clear();
     reader.read_line(&mut line)?;
     *row_precond = line
         .split_whitespace()
-        .map(|x| x.parse::<MyInt>())
+        .map(|x| x.parse::<T>())
         .collect::<Result<Vec<_>, _>>()?;
 
     // Read col_precond
@@ -57,7 +56,7 @@ pub fn load_wdm_file_sym(
     reader.read_line(&mut line)?;
     *col_precond = line
         .split_whitespace()
-        .map(|x| x.parse::<MyInt>())
+        .map(|x| x.parse::<T>())
         .collect::<Result<Vec<_>, _>>()?;
 
     // Read v_list
@@ -67,7 +66,7 @@ pub fn load_wdm_file_sym(
         reader.read_line(&mut line)?;
         let v = line
             .split_whitespace()
-            .map(|x| x.parse::<MyInt>())
+            .map(|x| x.parse::<T>())
             .collect::<Result<Vec<_>, _>>()?;
         if v.len() != n {
             return Err("v vector length does not match matrix columns".into());
@@ -82,7 +81,7 @@ pub fn load_wdm_file_sym(
         reader.read_line(&mut line)?;
         let curv = line
             .split_whitespace()
-            .map(|x| x.parse::<MyInt>())
+            .map(|x| x.parse::<T>())
             .collect::<Result<Vec<_>, _>>()?;
         if curv.len() != n {
             return Err("curv vector length does not match matrix columns".into());
@@ -98,7 +97,7 @@ pub fn load_wdm_file_sym(
         let seq = line
             .split_whitespace()
             .take(nlen)
-            .map(|x| x.parse::<MyInt>())
+            .map(|x| x.parse::<T>())
             .collect::<Result<Vec<_>, _>>()?;
         if seq.len() != nlen {
             return Err("seq vector length does not match expected sequence length".into());
@@ -122,14 +121,14 @@ pub fn save_wdm_file_sym<T> (
     wdm_filename: &str,
     n_rows : usize,
     n_cols : usize,
-    theprime: T,
+    theprime: u32,
     row_precond: &[T],
     col_precond: &[T],
     v_list: &[Vec<T>],
     curv_list: &[Vec<T>],
     seq_list: &[Vec<T>], 
 ) -> Result<(), Box<dyn std::error::Error>>
-where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T>+From<i32> 
+where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T>+From<u32> 
 {
     let file = File::create(wdm_filename)?;
     // Use a buffered writer for improved performance
