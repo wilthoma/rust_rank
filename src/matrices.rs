@@ -21,7 +21,7 @@ use std::ops::{Add, AddAssign, Mul, Rem};
 
 // use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
-const DOT_PRODUCT_CHUNK_SIZE: usize = 100;
+pub const DOT_PRODUCT_CHUNK_SIZE: usize = 100;
 
 /// Sparse matrix in Compressed Sparse Row (CSR) format
 #[derive(Clone, Debug)]

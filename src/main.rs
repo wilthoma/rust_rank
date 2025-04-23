@@ -385,7 +385,7 @@ fn main() {
         println!("Prime number {} is valid, no overflows expected.", prime);
     } else {
         // compute estimate for max prime number 
-        let max_nnz = std::cmp::max(max_row_nnz, max_col_nnz);
+        let max_nnz = std::cmp::max(std::cmp::max(max_row_nnz, max_col_nnz), matrices::DOT_PRODUCT_CHUNK_SIZE);
         let max_prime = ( (MyInt::max_value() as f64) / (max_nnz as f64) ).sqrt();
         println!("Prime number {} is not valid (must be <{}), may result in overflows. Exiting...", prime, max_prime);
         std::process::exit(1);
