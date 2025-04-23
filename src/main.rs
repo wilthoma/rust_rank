@@ -390,15 +390,19 @@ fn main() {
     {   
         println!("Running benchmark i64...");
         a.normal_simd_speedtest( THESMALLPRIME, 3);
+        a.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         println!("Running benchmark i32...");
         let aa : CsrMatrix<i32> = a.toi32();
         aa.normal_simd_speedtest( THESMALLPRIME, 3);
+        aa.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         let at = a.transpose();
         println!("Running benchmark i64 (transpose)...");
         at.normal_simd_speedtest( THESMALLPRIME, 3);
+        at.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         println!("Running benchmark i32 (transpose)...");
         let aat : CsrMatrix<i32> = at.toi32();
         aat.normal_simd_speedtest( THESMALLPRIME, 3);
+        aat.normal_simd_speedtest_serial( THESMALLPRIME, 3);
         return;
     }
 

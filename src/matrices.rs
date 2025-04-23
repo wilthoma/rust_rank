@@ -149,6 +149,33 @@ Simd<T, LANES>: Copy
         }).collect()
     }
 
+    pub fn serial_sparse_matvec_mul_simd<const LANES:usize>(&self, vector: &[Simd<T, LANES>], theprime: T) -> Vec<Simd<T, LANES>> 
+    where
+LaneCount<LANES>: SupportedLaneCount,
+Simd<T, LANES>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, LANES>>
+    + AddAssign
+    + Mul<Output = Simd<T, LANES>>
+    + Rem<Output = Simd<T, LANES>>,
+    {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+        // const ttheprime :MyInt = 27644437;
+        // Parallel iterator over rows
+        (0..self.n_rows).into_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+
+
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let sum = colis
+                .zip(&self.values[start..end])
+                .fold(Simd::splat(T::from(0)), |acc, (v, &val)| (acc + v * Simd::splat(val)) ) ;
+            sum % Simd::splat(theprime)
+        }).collect()
+    }
+
     pub fn load_csr_matrix_from_sms(file_path: &str, theprime : i32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> {
         let file = File::open(file_path)?;
         let reader = io::BufReader::new(file);
@@ -381,6 +408,40 @@ Simd<T, LANES>: Copy
             let _result = self.parallel_sparse_matvec_mul_simd(&svector8, T::from(theprime));
             let duration = start.elapsed();
             println!("SIMD8 multiplication took: {:?}", duration);
+        }
+    }
+
+    pub fn normal_simd_speedtest_serial(&self, theprime : i32, n_reps: usize) 
+    where Simd<T, 4>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, 4>>
+    + AddAssign
+    + Mul<Output = Simd<T, 4>>
+    + Rem<Output = Simd<T, 4>>,
+    Simd<T, 8>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, 8>>
+    + AddAssign
+    + Mul<Output = Simd<T, 8>>
+    + Rem<Output = Simd<T, 8>>,{
+        let svector8: Vec<Simd<T, 8>> = create_random_vector_simd(self.n_cols, theprime);
+        let svector4: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
+        let nvector = create_random_vector(self.n_cols, theprime);
+        for i in 0..n_reps {
+            let start = Instant::now();
+            let _result = self.serial_sparse_matvec_mul(&nvector, T::from(theprime));
+            let duration = start.elapsed();
+            println!("Normal multiplication (serial) took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.serial_sparse_matvec_mul_simd(&svector4, T::from(theprime));
+            let duration = start.elapsed();
+            println!("SIMD4 multiplication (serial) took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.serial_sparse_matvec_mul_simd(&svector8, T::from(theprime));
+            let duration = start.elapsed();
+            println!("SIMD8 multiplication (serial) took: {:?}", duration);
         }
     }
 
