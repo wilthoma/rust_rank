@@ -399,7 +399,7 @@ Simd<T, LANES>: Copy
         }
     }
 
-    pub fn is_prime_valid(&self, theprime: u32, max_t_value : i128) -> bool {
+    pub fn max_nnzs(&self) -> (usize, usize) {
         // compute row and column nnz
         let mut row_nnz = vec![0; self.n_rows];
         let mut col_nnz = vec![0; self.n_cols];
@@ -413,17 +413,20 @@ Simd<T, LANES>: Copy
         for &col in &self.col_indices {
             col_nnz[col] += 1;
         }
+        // Find the maximum nnz in rows and columns
+        let max_row_nnz = *row_nnz.iter().max().unwrap_or(&0);
+        let max_col_nnz = *col_nnz.iter().max().unwrap_or(&0);
+        (max_row_nnz, max_col_nnz)
+    }
+    pub fn is_prime_valid(&self, theprime: u32, max_t_value : i128) -> bool {
+        let (max_row_nnz, max_col_nnz) = self.max_nnzs();
 
         let prod = (theprime as i128) * (theprime as i128);
         // let max_i64_value = T::max_value(); //std::i64::MAX as i128;
         // check if prod * nnz <  std::i128::MAX for all entries
         (prod * (DOT_PRODUCT_CHUNK_SIZE as i128) < max_t_value) && // chunk_size 100 for dot products assumed
-        row_nnz.iter().all( |&nnz| {
-            (nnz as i128) * prod < max_t_value
-        }) && 
-        col_nnz.iter().all( |&nnz| {
-            (nnz as i128) * prod < max_t_value
-        })
+        (max_row_nnz as i128) * prod < max_t_value && 
+        (max_col_nnz as i128) * prod < max_t_value
     }
 
     pub fn normal_simd_speedtest(&self, theprime : u32, n_reps: usize) 

@@ -379,10 +379,15 @@ fn main() {
     }
 
     // check prime validity -- i.e., if with our custom simplifications we might run into overflows
+    let (max_row_nnz, max_col_nnz) = a.max_nnzs();
+    println!("Max row nnz: {} Max col nnz: {}", max_row_nnz, max_col_nnz);
     if a.is_prime_valid(prime, MyInt::max_value() as i128) {
         println!("Prime number {} is valid, no overflows expected.", prime);
     } else {
-        println!("Prime number {} is not valid, may result in overflows. Exiting...", prime);
+        // compute estimate for max prime number 
+        let max_nnz = std::cmp::max(max_row_nnz, max_col_nnz);
+        let max_prime = ( (MyInt::max_value() as f64) / (max_nnz as f64) ).sqrt();
+        println!("Prime number {} is not valid (must be <{}), may result in overflows. Exiting...", prime, max_prime);
         std::process::exit(1);
     }
 
