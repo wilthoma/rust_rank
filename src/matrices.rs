@@ -13,8 +13,9 @@ use std::path::Path;
 use std::time::Instant;
 use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 use std::ops::{Add, AddAssign, Mul, Rem};
-// use num_traits::Bounded;
-
+use num_traits::{One, Zero};
+use rand::distr::uniform::SampleUniform;
+use std::fmt::Display;
 
 // use std::alloc::{alloc_zeroed, Layout};
 // use std::ptr::NonNull;
@@ -22,6 +23,28 @@ use std::ops::{Add, AddAssign, Mul, Rem};
 // use core::simd::{Simd, SimdInt}; // SIMD signed integers
 
 pub const DOT_PRODUCT_CHUNK_SIZE: usize = 100;
+
+
+pub trait GoodInteger: Display+Sum+PartialOrd + SampleUniform + SimdElement + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
+impl<T: Display+ Sum+PartialOrd + SampleUniform + SimdElement + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> GoodInteger for T {}
+
+pub trait GoodSimd : Copy
++ Send
++ Sync
++ Add<Output = Self>
++ AddAssign
++ Mul<Output = Self>
++ Rem<Output = Self> { }
+impl<T, const LANES : usize> GoodSimd for Simd<T, LANES>
+where
+    T: GoodInteger,
+    LaneCount<LANES>: SupportedLaneCount,
+    Simd<T, LANES> : Send
+    + Sync
+    + Add<Output = Self>
+    + AddAssign
+    + Mul<Output = Self>
+    + Rem<Output = Self> { }
 
 /// Sparse matrix in Compressed Sparse Row (CSR) format
 #[derive(Clone, Debug)]
@@ -37,16 +60,67 @@ where
 }
 
 
-pub fn prettify_vect<T>(v: &[T], theprime: u32) -> Vec<T> 
-where T:Add<Output = T> + Rem<Output = T> + Copy + From<u32>,{
-    let theprime= T::from(theprime);
+pub fn prettify_vect<T>(v: &[T], theprime: T) -> Vec<T> 
+where T:Add<Output = T> + Rem<Output = T> + Copy ,{
+    // let theprime= T::from(theprime);
     v.iter().map(|&x| (x + theprime) % theprime).collect()
 }
 
+pub fn zip_simd_vector<T,const LANES : usize>(vects : &[Vec<T>]) -> Vec<Simd<T, LANES>>
+where
+    T: SimdElement + Copy ,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    assert_eq!(LANES, vects.len(), "must have one vector per lane.");
+    if vects.len() == 0 {
+        return vec![];
+    }
+    let length = vects[0].len();
+    (0..length)
+        .map(|i| {
+            let arr = std::array::from_fn(|lane| vects[lane][i]);
+            Simd::from_array(arr)
+        })
+        .collect()
+}
+pub fn zip_simd_vectors<T,const LANES : usize>(vects : &[Vec<T>]) -> Vec<Vec<Simd<T, LANES>>>
+where
+    T: SimdElement + Copy ,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    assert_eq!(vects.len() % LANES , 0, "number of vectors must be multiple of lane width.");
+    vects.chunks(LANES).map(|vs| zip_simd_vector(vs)).collect()
+}
+
+pub fn unzip_simd_vector<T, const LANES: usize>(vect: &[Simd<T, LANES>]) -> Vec<Vec<T>>
+where
+    T: SimdElement + Copy + Zero,
+    LaneCount<LANES>: SupportedLaneCount,
+{    
+    let length = vect.len();
+    assert!(length > 0, "Length of vector must be greater than 0");
+
+    let mut result = vec![vec![T::zero();length]; LANES];
+    for i in 0..length {
+        let arr = vect[i].to_array();
+        for lane in 0..LANES {
+            result[lane][i] = arr[lane];
+        }
+    }
+    result
+}
+
+pub fn unzip_simd_vectors<T, const LANES: usize>(vects: &[Vec<Simd<T, LANES>>]) -> Vec<Vec<T>>
+where
+    T: SimdElement + Copy+ Zero,
+    LaneCount<LANES>: SupportedLaneCount,
+{   
+    vects.into_iter().flat_map(|v| unzip_simd_vector(v)).collect()
+}
 
 pub fn dot_product_mod_p_parallel<T>(vec1: &[T], vec2: &[T], theprime: T) -> T 
 where T: 
-Add<Output = T> +Mul<Output = T> + Copy + Rem<Output = T> + AddAssign + Send + Sync + From<u32>,{
+Add<Output = T> +Mul<Output = T> + Copy + Rem<Output = T> + AddAssign + Send + Sync + Zero,{
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
     let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
@@ -56,15 +130,15 @@ Add<Output = T> +Mul<Output = T> + Copy + Rem<Output = T> + AddAssign + Send + S
         .map(|(chunk1, chunk2)| {
             chunk1.iter()
                 .zip(chunk2.iter())
-                .fold(T::from(0), |acc, (&x, &y)| acc + (x * y))
+                .fold(T::zero(), |acc, (&x, &y)| acc + (x * y))
                 % theprime
         })
-        .reduce(|| T::from(0), |acc, chunk_sum| (acc + chunk_sum) ) % theprime
+        .reduce(|| T::zero(), |acc, chunk_sum| (acc + chunk_sum) ) % theprime
 }
 
 pub fn dot_product_mod_p_serial<T>(vec1: &[T], vec2: &[T], theprime: T) -> T
 where T: 
-Copy + Rem<Output = T> + AddAssign + From<u32> + Sum<T> + Mul<Output = T> + Add<Output = T>,{
+Copy + Rem<Output = T> + AddAssign + Zero + Sum<T> + Mul<Output = T> + Add<Output = T>,{
     assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
 
     let chunk_size = DOT_PRODUCT_CHUNK_SIZE;
@@ -74,33 +148,34 @@ Copy + Rem<Output = T> + AddAssign + From<u32> + Sum<T> + Mul<Output = T> + Add<
         .map(|(chunk1, chunk2)| {
             chunk1.iter()
                 .zip(chunk2.iter())
-                .fold(T::from(0), |acc, (&x, &y)| acc + (x * y))
+                .fold(T::zero(), |acc, (&x, &y)| acc + (x * y))
                 % theprime
         })
         .sum::<T>() % theprime
 }
 
-pub fn create_random_vector<T>(length: usize, theprime: u32) -> Vec<T> 
-where T : From<u32>, 
+pub fn create_random_vector<T>(length: usize, theprime: T) -> Vec<T> 
+where T : Zero + SampleUniform + PartialOrd + Copy , 
 {
     let mut rng = rand::rng();
-    (0..length).map(|_| T::from( rng.random_range(0..theprime)) ).collect()
+    (0..length).map(|_| T::from( rng.random_range(T::zero()..theprime)) ).collect()
 }
 
-pub fn create_random_vector_nozero<T>(length: usize, theprime: u32) -> Vec<T> 
-where T : From<u32>, 
+
+pub fn create_random_vector_nozero<T>(length: usize, theprime: T) -> Vec<T> 
+where T : One + SampleUniform + PartialOrd + Copy, 
 {
     let mut rng = rand::rng();
-    (0..length).map(|_| T::from( rng.random_range(1..theprime)) ).collect()
+    (0..length).map(|_| T::from( rng.random_range(T::one()..theprime)) ).collect()
 }
 
 pub fn create_random_vector_simd<T, const LANES: usize>(
     length: usize,
-    theprime: u32,
+    theprime: T,
     // mut scalar_gen: impl FnMut(usize, T) -> Vec<T>,
 ) -> Vec<Simd<T, LANES>>
 where
-    T: SimdElement + Copy+ From<u32>,
+    T: SimdElement + Copy +Zero + SampleUniform + PartialOrd,
     LaneCount<LANES>: SupportedLaneCount,
 {
     // Generate one scalar vector per lane
@@ -118,56 +193,17 @@ where
 impl<T> CsrMatrix<T> where
 T: SimdElement
 + Copy
-+ From<u32>
++ Zero
 + Rem<Output = T>
 + Send
 + Sync
 + Add<Output = T>
 + AddAssign
-+ Mul<Output = T>,
++ Mul<Output = T>
++ SampleUniform
++ PartialOrd,
 {
-    pub fn parallel_sparse_matvec_mul_simd2<const LANES: usize>(
-        &self,
-        vector: &[Simd<T, LANES>],
-        theprime: T,
-    ) -> Vec<Simd<T, LANES>>
-    where
-        LaneCount<LANES>: SupportedLaneCount,
-        Simd<T, LANES>: Copy
-            + Send
-            + Sync
-            + Add<Output = Simd<T, LANES>>
-            + AddAssign
-            + Mul<Output = Simd<T, LANES>>
-            + Rem<Output = Simd<T, LANES>>,
-        T: Copy + From<u32>,
-    {
-        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
     
-        let mut result = vec![Simd::splat(T::from(0)); self.n_rows];
-    
-        result
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(row, out)| {
-                let start = self.row_ptr[row];
-                let end = self.row_ptr[row + 1];
-    
-                let sum = self.col_indices[start..end]
-                    .iter()
-                    .map(|&col| vector[col])
-                    .zip(&self.values[start..end])
-                    .fold(Simd::splat(T::from(0)), |acc, (v, &val)| {
-                        acc + v * Simd::splat(val)
-                    });
-    
-                *out = sum % Simd::splat(theprime);
-            });
-    
-        result
-    }
-
-
 
     pub fn parallel_sparse_matvec_mul_simd<const LANES:usize>(&self, vector: &[Simd<T, LANES>], theprime: T) -> Vec<Simd<T, LANES>> 
     where
@@ -191,7 +227,7 @@ Simd<T, LANES>: Copy
             let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
             let sum = colis
                 .zip(&self.values[start..end])
-                .fold(Simd::splat(T::from(0)), |acc, (v, &val)| (acc + v * Simd::splat(val)) ) ;
+                .fold(Simd::splat(T::zero()), |acc, (v, &val)| (acc + v * Simd::splat(val)) ) ;
             sum % Simd::splat(theprime)
         }).collect()
     }
@@ -218,12 +254,16 @@ Simd<T, LANES>: Copy
             let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
             let sum = colis
                 .zip(&self.values[start..end])
-                .fold(Simd::splat(T::from(0)), |acc, (v, &val)| (acc + v * Simd::splat(val)) ) ;
+                .fold(Simd::splat(T::zero()), |acc, (v, &val)| (acc + v * Simd::splat(val)) ) ;
             sum % Simd::splat(theprime)
         }).collect()
     }
 
-    pub fn load_csr_matrix_from_sms(file_path: &str, theprime : u32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> {
+    pub fn load_csr_matrix_from_sms(file_path: &str, theprime : u32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> 
+    where T : TryFrom<u32> ,
+    <T as TryFrom<u32>>::Error : std::fmt::Debug,
+    // T as TryFrom<u32>: Debug 
+    {
         let file = File::open(file_path)?;
         let reader = io::BufReader::new(file);
     
@@ -260,7 +300,7 @@ Simd<T, LANES>: Copy
                 if intvalue < 0 {
                     intvalue += theprimei;
                 }
-                let value: T = T::from(intvalue as u32);
+                let value: T = T::try_from(intvalue as u32).unwrap();
 
     
                 if row<=0 || col<=0 {
@@ -307,7 +347,7 @@ Simd<T, LANES>: Copy
 
         // Step 3: Prepare space for transposed values and indices
         let nnz = self.values.len();
-        let mut values_t = vec![T::from(0); nnz];
+        let mut values_t = vec![T::zero(); nnz];
         let mut col_indices_t = vec![0; nnz];
 
         let mut next_insert_pos = row_ptr_t.clone();
@@ -348,7 +388,7 @@ Simd<T, LANES>: Copy
             let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
             let sum = colis
                 .zip(&self.values[start..end])
-                .fold(T::from(0), |acc, (v, &val)| (acc + v * val)) % theprime;
+                .fold(T::zero(), |acc, (v, &val)| (acc + v * val)) % theprime;
             sum
         }).collect()
     }
@@ -363,17 +403,17 @@ Simd<T, LANES>: Copy
             let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
             let sum = colis
                 .zip(&self.values[start..end])
-                .fold(T::from(0), |acc, (v, &val)| (acc + v * val)) % theprime;
+                .fold(T::zero(), |acc, (v, &val)| (acc + v * val)) % theprime;
             sum
         }).collect()
     }
 
     /// Multiply a CSR matrix column-wise with the entries of a vector
     /// The existing CSR matrix is updated in-place
-    pub fn scale_csr_matrix_columns(&mut self, vector: &[T], theprime: u32) {
+    pub fn scale_csr_matrix_columns(&mut self, vector: &[T], theprime: T) {
         let matrix = self;
         assert_eq!(matrix.n_cols, vector.len(), "Matrix and vector dimensions must align.");
-        let theprime = T::from(theprime);
+        // let theprime = T::from(theprime);
         for i in 0..matrix.values.len() {
             let col = matrix.col_indices[i];
             matrix.values[i] = (matrix.values[i] * vector[col]) % theprime;
@@ -381,10 +421,10 @@ Simd<T, LANES>: Copy
     }
     /// Multiply a CSR matrix row-wise with the entries of a vector
     /// The existing CSR matrix is updated in-place
-    pub fn scale_csr_matrix_rows(&mut self, vector: &[T], theprime: u32) {
+    pub fn scale_csr_matrix_rows(&mut self, vector: &[T], theprime: T) {
         let matrix = self;
         assert_eq!(matrix.n_rows, vector.len(), "Matrix and vector dimensions must align.");
-        let theprime = T::from(theprime);
+        // let theprime = T::from(theprime);
 
         for row in 0..matrix.n_rows {
             let start = matrix.row_ptr[row];
@@ -429,8 +469,22 @@ Simd<T, LANES>: Copy
         (max_col_nnz as i128) * prod < max_t_value
     }
 
-    pub fn normal_simd_speedtest(&self, theprime : u32, n_reps: usize) 
-    where Simd<T, 4>: Copy
+    pub fn normal_simd_speedtest(&self, theprime : T, n_reps: usize) 
+    where Simd<T, 1>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, 1>>
+    + AddAssign
+    + Mul<Output = Simd<T, 1>>
+    + Rem<Output = Simd<T, 1>>,
+    Simd<T, 2>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, 2>>
+    + AddAssign
+    + Mul<Output = Simd<T, 2>>
+    + Rem<Output = Simd<T, 2>>,
+    Simd<T, 4>: Copy
     + Send
     + Sync
     + Add<Output = Simd<T, 4>>
@@ -443,35 +497,61 @@ Simd<T, LANES>: Copy
     + Add<Output = Simd<T, 8>>
     + AddAssign
     + Mul<Output = Simd<T, 8>>
-    + Rem<Output = Simd<T, 8>>,{
+    + Rem<Output = Simd<T, 8>>,
+    Simd<T, 16>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, 16>>
+    + AddAssign
+    + Mul<Output = Simd<T, 16>>
+    + Rem<Output = Simd<T, 16>>,
+    Simd<T, 32>: Copy
+    + Send
+    + Sync
+    + Add<Output = Simd<T, 32>>
+    + AddAssign
+    + Mul<Output = Simd<T, 32>>
+    + Rem<Output = Simd<T, 32>>,{
+        let svector32: Vec<Simd<T, 32>> = create_random_vector_simd(self.n_cols, theprime);
+        let svector16: Vec<Simd<T, 16>> = create_random_vector_simd(self.n_cols, theprime);
         let svector8: Vec<Simd<T, 8>> = create_random_vector_simd(self.n_cols, theprime);
         let svector4: Vec<Simd<T, 4>> = create_random_vector_simd(self.n_cols, theprime);
+        let svector2: Vec<Simd<T, 2>> = create_random_vector_simd(self.n_cols, theprime);
+        let svector1: Vec<Simd<T, 1>> = create_random_vector_simd(self.n_cols, theprime);
         let nvector = create_random_vector(self.n_cols, theprime);
         for _ in 0..n_reps {
             let start = Instant::now();
-            let _result = self.parallel_sparse_matvec_mul(&nvector, T::from(theprime));
+            let _result = self.parallel_sparse_matvec_mul(&nvector, theprime);
             let duration = start.elapsed();
             println!("Normal multiplication took: {:?}", duration);
             let start = Instant::now();
-            let _result = self.parallel_sparse_matvec_mul_simd(&svector4, T::from(theprime));
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector1, theprime);
+            let duration = start.elapsed();
+            println!("SIMD1 multiplication took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector2, theprime);
+            let duration = start.elapsed();
+            println!("SIMD2 multiplication took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector4, theprime);
             let duration = start.elapsed();
             println!("SIMD4 multiplication took: {:?}", duration);
             let start = Instant::now();
-            let _result = self.parallel_sparse_matvec_mul_simd2(&svector4, T::from(theprime));
-            let duration = start.elapsed();
-            println!("SIMD4 multiplication2 took: {:?}", duration);
-            let start = Instant::now();
-            let _result = self.parallel_sparse_matvec_mul_simd(&svector8, T::from(theprime));
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector8, theprime);
             let duration = start.elapsed();
             println!("SIMD8 multiplication took: {:?}", duration);
             let start = Instant::now();
-            let _result = self.parallel_sparse_matvec_mul_simd2(&svector8, T::from(theprime));
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector16, theprime);
             let duration = start.elapsed();
-            println!("SIMD8 multiplication2 took: {:?}", duration);
+            println!("SIMD16 multiplication took: {:?}", duration);
+            let start = Instant::now();
+            let _result = self.parallel_sparse_matvec_mul_simd(&svector32, theprime);
+            let duration = start.elapsed();
+            println!("SIMD32 multiplication took: {:?}", duration);
         }
     }
 
-    pub fn normal_simd_speedtest_serial(&self, theprime : u32, n_reps: usize) 
+    pub fn normal_simd_speedtest_serial(&self, theprime : T, n_reps: usize) 
     where Simd<T, 4>: Copy
     + Send
     + Sync
@@ -491,15 +571,15 @@ Simd<T, LANES>: Copy
         let nvector = create_random_vector(self.n_cols, theprime);
         for _ in 0..n_reps {
             let start = Instant::now();
-            let _result = self.serial_sparse_matvec_mul(&nvector, T::from(theprime));
+            let _result = self.serial_sparse_matvec_mul(&nvector, theprime);
             let duration = start.elapsed();
             println!("Normal multiplication (serial) took: {:?}", duration);
             let start = Instant::now();
-            let _result = self.serial_sparse_matvec_mul_simd(&svector4, T::from(theprime));
+            let _result = self.serial_sparse_matvec_mul_simd(&svector4, theprime);
             let duration = start.elapsed();
             println!("SIMD4 multiplication (serial) took: {:?}", duration);
             let start = Instant::now();
-            let _result = self.serial_sparse_matvec_mul_simd(&svector8, T::from(theprime));
+            let _result = self.serial_sparse_matvec_mul_simd(&svector8, theprime);
             let duration = start.elapsed();
             println!("SIMD8 multiplication (serial) took: {:?}", duration);
         }
@@ -581,6 +661,16 @@ impl CsrMatrix<u64> {
     pub fn tou64(&self) -> CsrMatrix<u64> {
         self.clone()
     }
+    pub fn tou16(&self) -> CsrMatrix<u16> {
+        let a = self;
+        CsrMatrix {
+            values: a.values.iter().map(|&x| x as u16).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
+        }
+    }
 }
 
 impl CsrMatrix<u32> {
@@ -595,6 +685,42 @@ impl CsrMatrix<u32> {
         }
     }
     pub fn tou32(&self) -> CsrMatrix<u32> {
+        self.clone()
+    }
+    pub fn tou16(&self) -> CsrMatrix<u16> {
+        let a = self;
+        CsrMatrix {
+            values: a.values.iter().map(|&x| x as u16).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
+        }
+    }
+}
+
+impl CsrMatrix<u16> {
+    pub fn tou64(&self) -> CsrMatrix<u64> {
+        let a = self;
+        CsrMatrix {
+            values: a.values.iter().map(|&x| x as u64).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
+        }
+    }
+    pub fn tou32(&self) -> CsrMatrix<u32> {
+        let a = self;
+        CsrMatrix {
+            values: a.values.iter().map(|&x| x as u32).collect(),
+            col_indices: a.col_indices.clone(),
+            row_ptr: a.row_ptr.clone(),
+            n_rows: a.n_rows,
+            n_cols: a.n_cols,
+        }
+    }
+    pub fn tou16(&self) -> CsrMatrix<u16> {
         self.clone()
     }
 }

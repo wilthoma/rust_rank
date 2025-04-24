@@ -101,19 +101,19 @@ type MyInt = u64;
 // }
 
 
-pub fn block_berlekamp_massey<T>(seq: Vec<Vec<T>>, num_u:usize, num_v:usize, p:u32) -> Vec<u64> 
+pub fn block_berlekamp_massey<T>(seq: Vec<Vec<T>>, num_u:usize, num_v:usize, p:T) -> Vec<u64> 
 where 
-T: Copy + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + std::ops::Rem<Output = T> + std::fmt::Debug + From<u32> + Into<u64> + PartialOrd,
+T: Copy + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + std::ops::Rem<Output = T> + std::fmt::Debug + num_traits::Zero + Into<u64> + PartialOrd,
 {
     if num_v >1 || num_u > 1{
         println!("Warning: Matrix Berlekamp Massey is not yet implemented.");
     }
-    let pt = T::from(p);
+    // let pt = T::from(p);
 
     // convert all sequences to u64
-    let useq: Vec<Vec<u64>> = seq.iter().map(|s| s.iter().map(|&x| (if x>=T::from(0) {x} else {x+pt}).into() ).collect()).collect();
+    let useq: Vec<Vec<u64>> = seq.iter().map(|s| s.iter().map(|&x| (if x>=T::zero() {x} else {x+p}).into() ).collect()).collect();
 
-    let bmres: Vec<Vec<u64>> = useq.iter().map(|s| bubblemath::linear_recurrence::berlekamp_massey(s, p as u64))
+    let bmres: Vec<Vec<u64>> = useq.iter().map(|s| bubblemath::linear_recurrence::berlekamp_massey(s, p.into()))
         .collect();
 
     for v in bmres.iter(){

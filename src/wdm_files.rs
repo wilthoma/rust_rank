@@ -27,7 +27,7 @@ pub fn load_wdm_file_sym<T>(
     curv_list: &mut Vec<Vec<T>>,
     seq_list: &mut Vec<Vec<T>>,
 ) -> Result<(u32, usize, usize, usize), Box<dyn std::error::Error>> 
-where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T> + From<u32> + std::str::FromStr,
+where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T>  + std::str::FromStr,
 <T as FromStr>::Err: std::error::Error + 'static
 {
     let file = File::open(wdm_filename)?;
@@ -121,14 +121,14 @@ pub fn save_wdm_file_sym<T> (
     wdm_filename: &str,
     n_rows : usize,
     n_cols : usize,
-    theprime: u32,
+    theprime: T,
     row_precond: &[T],
     col_precond: &[T],
     v_list: &[Vec<T>],
     curv_list: &[Vec<T>],
     seq_list: &[Vec<T>], 
 ) -> Result<(), Box<dyn std::error::Error>>
-where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T>+From<u32> 
+where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + std::ops::AddAssign + std::ops::Rem<Output=T>
 {
     let file = File::create(wdm_filename)?;
     // Use a buffered writer for improved performance

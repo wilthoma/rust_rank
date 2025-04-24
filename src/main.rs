@@ -7,6 +7,8 @@ mod graphs;
 mod wdm_files;
 mod block_berlekamp_massey;
 mod blockbmtest;
+mod vectorstream;
+use vectorstream::*;
 use blockbmtest::test_matrix_berlekamp_massey_simple;
 use block_berlekamp_massey::block_berlekamp_massey;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
@@ -15,20 +17,24 @@ use wdm_files::{save_wdm_file_sym, load_wdm_file_sym};
 use std::io::Write;
 use clap::{Arg, Command};
 use std::cmp::min;
-// use rayon::prelude::*;
+use rayon::prelude::*;
 use std::sync::Arc;
 use crossbeam_channel;
 use std::thread;
-use core::simd::SimdElement;
 use std::ops::{Add, AddAssign, Mul, Rem};
 use std::iter::Sum;
 use std::fmt::Display;
+use num_traits::Zero;
+use rand::distr::uniform::SampleUniform;
+use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 
 // type MyInt = u64;
-type MyInt = u32;
+// type MyInt = u32;
+type MyInt = u16;
 
 const THEPRIME: u32 = 27644437; // A large prime number for modular arithmetic
 const THESMALLPRIME : u32 = 3323;
+const THETINYPRIME : u16 = 23;
 // const THESMALLPRIME : u32 = 6481;
 // const THESMALLPRIME : u32 = 5669;
 
@@ -60,6 +66,7 @@ pub fn report_progress(
     std::io::stdout().flush().unwrap();
 }
 
+
 pub fn main_loop_s_mt<T>(
     a: &Arc<CsrMatrix<T>>,
     at: &Arc<CsrMatrix<T>>,
@@ -70,7 +77,7 @@ pub fn main_loop_s_mt<T>(
     seq: &mut Vec<Vec<T>>,
     max_nlen: usize,
     wdm_filename: &str,
-    theprime: u32,
+    theprime: T,
     save_after: usize,
     use_matvmul_parallel: bool,
     use_vecp_parallel: bool,
@@ -78,19 +85,19 @@ pub fn main_loop_s_mt<T>(
 
 ) -> Result<(), Box<dyn std::error::Error>> 
 where 
-    T: Display + SimdElement + AddAssign + From<u32> + Sum<T> + Copy + Mul<Output = T> + Add<Output = T> + Rem<Output = T> + Send + Sync + 'static
-    ,
-    {
+    T: Zero + SampleUniform+ PartialOrd+ Display + SimdElement + AddAssign + Sum<T> + Copy + Mul<Output = T> + Add<Output = T> + Rem<Output = T> + Send + Sync + 'static,
+{
 
     let start = std::time::Instant::now();
     let mut last_save = start;
     let mut last_report = start;
     let mut last_nlen = seq[0].len();
     let mut curv_result  = curv.clone();
-    let to_be_produced = max_nlen - seq[0].len();
-    let theprimet = T::from(theprime);
+    let to_be_produced = max_nlen - seq[0].len(); 
+    let num_v = curv.len();
+
     //let mut tmpv = vec![0; a.n_rows];
-    let num_v = v.len();
+    // let num_v = v.len();
     let buffer_capacity = 10;
     let (txs, rxs) : (Vec<_>, Vec<_>) = 
         (0..num_v).map(|_| crossbeam_channel::bounded(buffer_capacity)).unzip();
@@ -104,11 +111,11 @@ where
 
             if use_matvmul_parallel {
                 // we store curw=A^t (A^tA)^i v for the next iteration since ownership of (A^tA)^i v is lost by sending over the channel
-                let mut curw = a.parallel_sparse_matvec_mul(&local_curv, theprimet);
+                let mut curw = a.parallel_sparse_matvec_mul(&local_curv, theprime);
 
                 for _ in 0..(to_be_produced/2) {
-                    let vec = at.parallel_sparse_matvec_mul(&curw, theprimet);
-                    curw = a.parallel_sparse_matvec_mul(&vec, theprimet);
+                    let vec = at.parallel_sparse_matvec_mul(&curw, theprime);
+                    curw = a.parallel_sparse_matvec_mul(&vec, theprime);
                     if tx.send(vec).is_err(){
                         eprintln!("Error sending token from worker {}", worker_id);
                         return;
@@ -116,11 +123,11 @@ where
                 }
              } else { 
                 // same code, but version with serial matvecmul
-                let mut curw = a.serial_sparse_matvec_mul(&local_curv, theprimet);
+                let mut curw = a.serial_sparse_matvec_mul(&local_curv, theprime);
 
                 for _ in 0..(to_be_produced/2) {
-                    let vec = at.serial_sparse_matvec_mul(&curw, theprimet);
-                    curw = a.serial_sparse_matvec_mul(&vec, theprimet);
+                    let vec = at.serial_sparse_matvec_mul(&curw, theprime);
+                    curw = a.serial_sparse_matvec_mul(&vec, theprime);
                     if tx.send(vec).is_err(){
                         eprintln!("Error sending token from worker {}", worker_id);
                         return;
@@ -156,12 +163,12 @@ where
                 let vec2 = &received_tokens[j];
 
                 if use_vecp_parallel {
-                    seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprimet));
-                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprimet));
+                    seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
                 }
                 else {
-                    seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprimet));
-                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprimet));
+                    seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprime));
                 }
                 ii += 1;
             }
@@ -208,6 +215,117 @@ where
 
 }
 
+pub fn main_loop_s_mt2<T:GoodInteger, S:VectorStream<T>>(
+    stream : &mut S,
+    a: &Arc<CsrMatrix<T>>,
+    row_precond: &[T],
+    col_precond: &[T],
+    curv: &mut Vec<Vec<T>>,
+    v: &Vec<Vec<T>>,
+    seq: &mut Vec<Vec<T>>,
+    max_nlen: usize,
+    wdm_filename: &str,
+    theprime: T,
+    save_after: usize,
+    use_vecp_parallel: bool,
+) -> Result<(), Box<dyn std::error::Error>> 
+{
+
+    let start = std::time::Instant::now();
+    let mut last_save = start;
+    let mut last_report = start;
+    let mut last_nlen = seq[0].len();
+    // let mut curv_result  = curv.clone();
+    let to_be_produced = max_nlen - seq[0].len(); 
+    let num_v = curv.len();
+    
+    for _ in 0..to_be_produced/2 {
+        let received_tokens = stream.next().unwrap();
+
+        // Now, process the received tokens
+        // let start_time = std::time::Instant::now();
+    
+
+        // let dotps = (0..num_v).into_iter()
+        // .flat_map(move |i| (i..num_v).into_iter().map(move |j| (i, j)))
+        // .collect::<Vec<(usize, usize)>>().par_iter().map(|(i, j)| {
+        //     let vec1 = &received_tokens[*i];
+        //     let vec1_prev = &curv[*i];
+        //     let vec2 = &received_tokens[*j];
+
+        //     if use_vecp_parallel {
+        //         (dot_product_mod_p_parallel(vec1_prev, vec2, theprime), dot_product_mod_p_parallel(vec1, vec2, theprime))
+        //     }
+        //     else {
+        //         (dot_product_mod_p_serial(vec1_prev, vec2, theprime), dot_product_mod_p_serial(vec1, vec2, theprime))
+        //     }
+        // }).collect::<Vec<_>>();
+
+        // for (ii, (dot1, dot2)) in dotps.into_iter().enumerate() {
+        //     seq[ii].push(dot1);
+        //     seq[ii].push(dot2);
+        // }
+
+
+        let mut ii = 0;
+        for i in 0..num_v {
+            for j in i..num_v {
+
+                let vec1 = &received_tokens[i];
+                let vec1_prev = &curv[i];
+                let vec2 = &received_tokens[j];
+
+                if use_vecp_parallel {
+                    seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
+                }
+                else {
+                    seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprime));
+                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprime));
+                }
+                ii += 1;
+            }
+        }
+
+        // println!("Time taken for dot product computations: {:?}\n", start_time.elapsed());
+
+        // store current vectors in curv
+        curv.clone_from_slice(&received_tokens);
+
+        // std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        if last_save.elapsed().as_secs_f64() > save_after as f64 {
+            println!("\nSaving...");
+            let save_start = std::time::Instant::now();
+            last_save = std::time::Instant::now();
+            match save_wdm_file_sym(&wdm_filename, a.n_rows, a.n_cols, theprime, &row_precond, &col_precond, &v, curv, &seq) {
+                Ok(_) => {
+                    println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
+                }
+                Err(e) => {
+                    eprintln!("Error saving state to file {}: {}", wdm_filename, e);
+                    //return Err(Box::new(e));
+                }
+            }
+            // std::thread::sleep(std::time::Duration::from_millis(500));
+            
+            // println!("\nSaved state to file {} at sequence length {} (saving took {:?}).\n", wdm_filename, seq[0].len(), save_start.elapsed());
+        }
+
+        if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
+            // println!("Report");
+            let fill_status = stream.fill_status();
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, &format!("Channel fill status {}", fill_status));
+            last_report = std::time::Instant::now();
+            last_nlen = seq[0].len();
+        }
+    }
+
+    // *curv = curv_result;
+    Ok(())
+
+}
+
 
 
 
@@ -234,7 +352,7 @@ fn main() {
             Arg::new("num_threads")
                 .short('t')
                 .long("threads")
-                .help("Size of threadpool to use")
+                .help("Size of shared threadpool to use (excluding the worker threads)")
                 .value_parser(clap::value_parser!(usize))
                 .value_name("NUM")
                 .default_value("4"),
@@ -258,6 +376,15 @@ fn main() {
                 .default_value("200"),
         )
         .arg(
+            Arg::new("lanes")
+                .short('l')
+                .long("lanes")
+                .help("The number of SIMD lanes to use (1,2,4,8 or 16).")
+                .value_parser(clap::value_parser!(usize))
+                .value_name("LANES")
+                .default_value("1"),
+        )
+        .arg(
             Arg::new("prime")
                 .short('p')
                 .long("prime")
@@ -268,12 +395,12 @@ fn main() {
                 ,
         )
         .arg(
-            Arg::new("num_v")
-                .short('v')
-                .long("num_v")
-                .help("The number of columns in the V matrix. This is also the number of worker threads.")
+            Arg::new("num_workers")
+                .short('w')
+                .long("num_workers")
+                .help("The number of worker threads, excluding the shared thread pool. The number of columns in the V matrix is the number of worker threads times the lane count.")
                 .value_parser(clap::value_parser!(usize))
-                .value_name("NUMV")
+                .value_name("NUMW")
                 .default_value("1"),
         )
         .arg(
@@ -322,11 +449,15 @@ fn main() {
     let transpose_matrix = *matches.get_one::<bool>("transpose").unwrap_or(&false);
     let num_threads: usize = *matches.get_one::<usize>("num_threads").expect("Invalid number of threads");
     let default_prime = if (MyInt::max_value() as u128) < (THEPRIME as u128)* (THEPRIME as u128) {THESMALLPRIME} else {THEPRIME};
-    let mut prime: u32 = *matches.get_one::<u32>("prime").unwrap_or(&default_prime);
+    let pprime: u32 = *matches.get_one::<u32>("prime").unwrap_or(&default_prime);
     let mut max_nlen: usize = *matches.get_one::<usize>("maxnlen").unwrap_or(&0) as usize;
     let save_after: usize = *matches.get_one::<usize>("saveafter").unwrap_or(&200);
+    let lanes: usize = *matches.get_one::<usize>("lanes").unwrap_or(&1);
     // let mut num_u: usize = *matches.get_one::<usize>("num_u").unwrap_or(&1);
-    let mut num_v: usize = *matches.get_one::<usize>("num_v").unwrap_or(&1);
+    let mut num_workers: usize = *matches.get_one::<usize>("num_workers").unwrap_or(&1);
+    let num_v = num_workers * lanes;
+
+    let mut prime = pprime as MyInt;
 
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
@@ -337,7 +468,7 @@ fn main() {
     // load the matrix file
 
     let start_time = std::time::Instant::now();
-    let mut a:CsrMatrix<MyInt> = CsrMatrix::load_csr_matrix_from_sms(filename, prime ).expect("Failed to load matrix");
+    let mut a:CsrMatrix<MyInt> = CsrMatrix::load_csr_matrix_from_sms(filename, prime as u32).expect("Failed to load matrix");
     if transpose_matrix {
         a = a.transpose();
     }
@@ -362,13 +493,16 @@ fn main() {
     if std::path::Path::new(&wdm_filename).exists() && !overwrite {
         println!("Loading state from file {}...", &wdm_filename);
         let (tprime, tm, tn, tnum_v) = load_wdm_file_sym(&wdm_filename, &mut row_precond, &mut col_precond, &mut v, &mut curv, &mut seq).unwrap();
-        prime = tprime;
+        prime = tprime as MyInt;
         if tm != a.n_rows || tn != a.n_cols {
             println!("Matrix dimensions do not match! {}x{} vs {}x{}", tm, tn, a.n_rows, a.n_cols);
             std::process::exit(1);
         }
         // num_u = tnum_u;
-        num_v = tnum_v;
+        if tnum_v != num_v {
+            println!("Number of workers * lanes does not match the size of V in the saved file! {} vs {}", tnum_v, num_v);
+            std::process::exit(1);
+        }
         println!("Loaded state from file {} with {} entries. Note: parameteer in wdm file take precedence over those passed via command line,", &wdm_filename, seq[0].len());
     } else {
 
@@ -382,7 +516,7 @@ fn main() {
     // check prime validity -- i.e., if with our custom simplifications we might run into overflows
     let (max_row_nnz, max_col_nnz) = a.max_nnzs();
     println!("Max row nnz: {} Max col nnz: {}", max_row_nnz, max_col_nnz);
-    if a.is_prime_valid(prime, MyInt::max_value() as i128) {
+    if a.is_prime_valid(prime as u32, MyInt::max_value() as i128) {
         println!("Prime number {} is valid, no overflows expected.", prime);
     } else {
         // compute estimate for max prime number 
@@ -400,28 +534,37 @@ fn main() {
     if benchmark
     {   
         let a = a.tou64();
-        println!("Running benchmark i64...");
-        a.normal_simd_speedtest( THESMALLPRIME, 3);
-        a.normal_simd_speedtest_serial( THESMALLPRIME, 3);
-        println!("Running benchmark i32...");
+        println!("Running benchmark u64...");
+        a.normal_simd_speedtest( THESMALLPRIME as u64, 3);
+        a.normal_simd_speedtest_serial( THESMALLPRIME as u64, 3);
+        println!("Running benchmark u32...");
         let aa : CsrMatrix<u32> = a.tou32();
         aa.normal_simd_speedtest( THESMALLPRIME, 3);
         aa.normal_simd_speedtest_serial( THESMALLPRIME, 3);
-        let at = a.transpose();
-        println!("Running benchmark i64 (transpose)...");
-        at.normal_simd_speedtest( THESMALLPRIME, 3);
-        at.normal_simd_speedtest_serial( THESMALLPRIME, 3);
-        println!("Running benchmark i32 (transpose)...");
+        println!("Running benchmark u16...");
+        let aaa : CsrMatrix<u16> = a.tou16();
+        aaa.normal_simd_speedtest( THETINYPRIME, 3);
+        aaa.normal_simd_speedtest_serial( THETINYPRIME, 3);
+        let at = a.transpose().tou64();
+        println!("Running benchmark u64 (transpose)...");
+        at.normal_simd_speedtest( THESMALLPRIME as u64, 3);
+        at.normal_simd_speedtest_serial( THESMALLPRIME as u64, 3);
+        println!("Running benchmark u32 (transpose)...");
         let aat : CsrMatrix<u32> = at.tou32();
         aat.normal_simd_speedtest( THESMALLPRIME, 3);
         aat.normal_simd_speedtest_serial( THESMALLPRIME, 3);
+        println!("Running benchmark u16 (transpose)...");
+        let aaat : CsrMatrix<u16> = at.tou16();
+        aaat.normal_simd_speedtest( THETINYPRIME, 3);
+        aaat.normal_simd_speedtest_serial( THETINYPRIME, 3);
         return;
     }
 
 
     // Check if already done with sequence computation
-    if max_nlen > 0 && seq[0].len() >= max_nlen {
-        println!("Already computed {} entries, nothing to do.", seq[0].len());
+    let to_be_computed = max_nlen - seq[0].len();
+    if to_be_computed <= 0 {
+        println!("Already computed {} sequence entries, nothing to do.", seq[0].len());
 
     } else {
         println!{"Preconditioning matrix ..."}
@@ -436,11 +579,44 @@ fn main() {
         let at = std::sync::Arc::new(at);
         println!{"Done"}
     
-        println!{"Starting computation..."}
-    
+        println!{"Starting computation with {} workers on {} lane(s) each...", num_workers, lanes}
+        // let x : Box<&mut dyn VectorStream<MyInt>> = Box::new(&NormalVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone));
+        
+        // main_loop_s_mt2( x, &a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
+            // &wdm_filename, prime, save_after, parallel_dot);
+        let err;
+        if lanes == 1 {
+            // we don't use simd 
+            let mut stream: NormalVectorStream<MyInt> = NormalVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
+                &wdm_filename, prime, save_after, parallel_dot);
+        } else if lanes == 2{
+            // we use simd 
+            let mut stream: SimdVectorStream<MyInt, 2> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
+                &wdm_filename, prime, save_after, parallel_dot);
+        } else if lanes == 4{
+            // we use simd 
+            let mut stream: SimdVectorStream<MyInt, 4> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
+                &wdm_filename, prime, save_after, parallel_dot);
+        } else if lanes == 8{
+            // we use simd 
+            let mut stream: SimdVectorStream<MyInt, 8> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
+                &wdm_filename, prime, save_after, parallel_dot);
+        } else if lanes == 16{
+            // we use simd 
+            let mut stream: SimdVectorStream<MyInt, 16> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
+                &wdm_filename, prime, save_after, parallel_dot);
+        } else {
+            println!("Invalid number of lanes: {}. Must be 1, 2, 4, 8 or 16.", lanes);
+            std::process::exit(1);
+        }
+
         // run main loop
-        if let Err(e) = main_loop_s_mt(&a, &at, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
-                &wdm_filename, prime, save_after, !serial_matvmul, parallel_dot, deep_clone) {
+        if let Err(e) = err {
             eprintln!("Error in main loop: {}", e);
             std::process::exit(1);
         } else {
@@ -454,13 +630,13 @@ fn main() {
     println!("Sequence computed, running Berlekamp-Massey...");
     // let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
     let start_time = std::time::Instant::now();
-    let bmres = block_berlekamp_massey(seq, num_v, num_v, prime);
+    let bmres = block_berlekamp_massey(seq, num_v, num_v, prime );
     // let bmres: Vec<u64> = bubblemath::linear_recurrence::berlekamp_massey(&useq, prime as u64);
     let duration = start_time.elapsed();
     println!("Time taken for Berlekamp-Massey: {:?}", duration);
     println!("Berlekamp-Massey result: {:?}", bmres.len());
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
 
-    test_matrix_berlekamp_massey_simple();
+    // test_matrix_berlekamp_massey_simple();
 
 }
