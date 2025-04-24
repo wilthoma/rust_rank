@@ -465,7 +465,7 @@ fn main() {
             .build_global()
             .expect("Failed to create thread pool");
     }
-    // load the matrix file
+    // load the matrix file -- TODO: matrix loading must be moved after the wdm loading since the prime number is needed for matrix loading
 
     let start_time = std::time::Instant::now();
     let mut a:CsrMatrix<MyInt> = CsrMatrix::load_csr_matrix_from_sms(filename, prime as u32).expect("Failed to load matrix");
