@@ -1,10 +1,10 @@
 
 
 
-use nalgebra::DMatrix as Matrix;
+use nalgebra::DMatrix;
 // use std::ops::{Add, Mul, Sub};
 
-// type Matrix<T> = DMatrix<T>;
+type Matrix<T> = DMatrix<T>;
 
 // use std::cmp::{min, max};
 
@@ -164,7 +164,41 @@ pub fn matrix_berlekamp_massey(
 // }
 
 
+/// Multiply two polynomials of matrices modulo z^delta
+fn poly_mat_mul(a: &[DMatrix<i64>], b: &[DMatrix<i64>], delta: usize, p: i64) -> Vec<DMatrix<i64>> {
+    let n = a[0].nrows();
+    let mut result = vec![DMatrix::zeros(n, n); delta];
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            if i + j < delta {
+                result[i + j] = &result[i + j] + &(&a[i] * &b[j]);
+                result[i + j].apply(|x| *x = (*x % p + p) % p);
+            }
+        }
+    }
+    result
+}
 
+/// Shift auxiliary part of f(z) by one degree (multiply by z)
+fn shift_auxiliary_part(f: &mut Vec<DMatrix<i64>>, n: usize, p: i64) {
+    f.insert(0, DMatrix::zeros(f[0].nrows(), 2 * n));
+    f.truncate(f.len());
+    for mat in f.iter_mut() {
+        for i in 0..n {
+            for j in 0..n {
+                mat[(i, n + j)] = mat[(i, n + j)] % p;
+            }
+        }
+    }
+}
+
+/// Update MBM9 correctly: f(z) <- f(z) * tau, then shift auxiliary part by z
+fn update_f(f: &Vec<DMatrix<i64>>, tau: &DMatrix<i64>, n: usize, delta: usize, p: i64) -> Vec<DMatrix<i64>> {
+    let mut new_f = poly_mat_mul(f, &[tau.clone()], delta + 1, p); // +1 to allow for shift
+    shift_auxiliary_part(&mut new_f, n, p);
+    new_f.truncate(delta);
+    new_f
+}
 
 fn auxiliary_gaussian_elimination(
     xi: &Matrix<i64>, // Ξ ∈ K^{N×2N}
