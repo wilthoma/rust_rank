@@ -29,6 +29,7 @@ fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<V
 
     while beta < delta - sigma + mu + 1 {
         t += 1;
+        print!("{:?}", d);
 
         let mut phi_t = DMatrix::zeros(n, 2 * n);
         for (i, mi) in m.iter().enumerate() {
@@ -43,10 +44,7 @@ fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<V
         let (tau, new_d) = auxiliary_gaussian_elimination(&phi_t, &d, p);
         d = new_d;
 
-        // MBM 6
-        for i in n..2*n {
-            d[i] = d[i]+1;
-        }
+
 
         sigma = d.iter().take(n).sum();
         mu = *d.iter().take(n).max().unwrap();
@@ -56,8 +54,13 @@ fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<V
             println!("Insufficient bound.");
             return None;
         }
-        println!("3");
+        // println!("3");
         f = update_f(&f, &tau, n, delta + 1, p);
+
+                // MBM 6
+                for i in n..2*n {
+                    d[i] = d[i]+1;
+                }
     }
 
     // println!("4");
@@ -225,7 +228,10 @@ fn auxiliary_gaussian_elimination(phi_t: &DMatrix<i64>, d: &[usize], p: i64) -> 
         }
         println!("b");
 
-        let &l = b_i.iter().min_by_key(|&&j| d[j]).unwrap();
+        let mut l = *b_i.iter().min_by_key(|&&j| d[j]).unwrap();
+        if d[l] == d[n+i] && l != n+i {
+            l = n+i;
+        }
         b_i.retain(|&j| j != l);
 
         for &j in &b_i {
@@ -395,13 +401,14 @@ pub fn test_matrix_berlekamp_massey_simple2() {
     printseries(&result2, 4);
 
     // 
+    println!("{:?}", vec_matrix_to_poly_matrix(&result2,p));
     println!("Top invariant factors");
-    let f0 = top_invariant_factor(vec_matrix_to_poly_matrix(&result0));
+    let f0 = top_invariant_factor(vec_matrix_to_poly_matrix(&result0,p));
     println!("{:?}", f0);
-    let f1 = top_invariant_factor(vec_matrix_to_poly_matrix(&result1));
+    let f1 = top_invariant_factor(vec_matrix_to_poly_matrix(&result1,p));
     println!("{:?}", f1);
 
-    let f2 = top_invariant_factor(vec_matrix_to_poly_matrix(&result2));
+    let f2 = top_invariant_factor(vec_matrix_to_poly_matrix(&result2,p));
     println!("{:?}", f2);
 
 
