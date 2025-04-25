@@ -3,7 +3,7 @@
 
 use nalgebra::DMatrix;
 
-use crate::invariant_factor::{top_invariant_factor, vec_matrix_to_poly_matrix};
+use crate::{invariant_factor::{top_invariant_factor, vec_matrix_to_poly_matrix}, matrices::GoodInteger};
 // use std::ops::{Add, Mul, Sub};
 
 type Matrix<T> = DMatrix<T>;
@@ -11,7 +11,7 @@ type Matrix<T> = DMatrix<T>;
 // use std::cmp::{min, max};
 
 /// Matrix Berlekamp-Massey algorithm
-fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<Vec<DMatrix<i64>>> {
+pub fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<Vec<DMatrix<i64>>> {
     let n = m[0].nrows();
     let mut f: Vec<DMatrix<i64>> = vec![DMatrix::zeros(n, 2 * n); 1];
     for i in 0..n {
@@ -218,7 +218,7 @@ fn auxiliary_gaussian_elimination(phi_t: &DMatrix<i64>, d: &[usize], p: i64) -> 
     let mut d = d.to_vec();
     let mut a: Vec<usize> = (0..n).collect();
 
-    println!("a");
+    // println!("a");
     for i in 0..n {
         let mut b_i: Vec<usize> = a.iter().copied().filter(|&j| phi[(i, j)] % p != 0).collect();
         b_i.push(n + i);
@@ -226,7 +226,7 @@ fn auxiliary_gaussian_elimination(phi_t: &DMatrix<i64>, d: &[usize], p: i64) -> 
         if b_i.is_empty() {
             continue;
         }
-        println!("b");
+        // println!("b");
 
         let mut l = *b_i.iter().min_by_key(|&&j| d[j]).unwrap();
         if d[l] == d[n+i] && l != n+i {
@@ -412,4 +412,21 @@ pub fn test_matrix_berlekamp_massey_simple2() {
     println!("{:?}", f2);
 
 
+}
+
+pub fn vecvec_to_symmetric_matrix_list<T:GoodInteger+Into<i64>>(v: &Vec<Vec<T>>, n:usize) -> Vec<DMatrix<i64>> {
+    assert_eq!(v.len(), (n*(n+1)/2) as usize, "v length must be n*(n+1)/2");
+    let deg = v[0].len();
+    let mut m = vec![DMatrix::zeros(n, n); deg];
+    let mut ii =0;
+    for i in 0..n {
+        for j in i..n {
+            for k in 0..deg {
+                m[k][(i, j)] = v[ii][k].into();
+                m[k][(j, i)] = v[ii][k].into();
+            }
+            ii += 1;
+        }
+    }
+    m
 }

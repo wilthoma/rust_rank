@@ -9,8 +9,10 @@ mod block_berlekamp_massey;
 mod blockbmtest;
 mod vectorstream;
 mod invariant_factor;
+use bubblemath::linear_recurrence::berlekamp_massey;
+use invariant_factor::{top_invariant_factor, vecvec_to_symmetric_poly_matrix, vec_matrix_to_poly_matrix};
 use vectorstream::*;
-use blockbmtest::test_matrix_berlekamp_massey_simple2;
+use blockbmtest::{matrix_berlekamp_massey, test_matrix_berlekamp_massey_simple2, vecvec_to_symmetric_matrix_list};
 use block_berlekamp_massey::block_berlekamp_massey;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
 use wdm_files::{save_wdm_file_sym, load_wdm_file_sym};
@@ -31,7 +33,7 @@ use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 
 // type MyInt = u64;
 // type MyInt = u32;
-type MyInt = u16;
+type MyInt = u32;
 
 const THEPRIME: u32 = 27644437; // A large prime number for modular arithmetic
 const THESMALLPRIME : u32 = 3323;
@@ -319,9 +321,6 @@ fn main() {
             .expect("Failed to create thread pool");
     }
 
-    test_matrix_berlekamp_massey_simple2();
-    return;
-
 
     // load the matrix file -- TODO: matrix loading must be moved after the wdm loading since the prime number is needed for matrix loading
     let start_time = std::time::Instant::now();
@@ -487,13 +486,25 @@ fn main() {
     println!("Sequence computed, running Berlekamp-Massey...");
     // let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
     let start_time = std::time::Instant::now();
-    let bmres = block_berlekamp_massey(seq, num_v, num_v, prime );
+    let bmres = block_berlekamp_massey(seq.clone(), num_v, num_v, prime );
     // let bmres: Vec<u64> = bubblemath::linear_recurrence::berlekamp_massey(&useq, prime as u64);
     let duration = start_time.elapsed();
     println!("Time taken for Berlekamp-Massey: {:?}", duration);
     println!("Berlekamp-Massey result: {:?}", bmres.len());
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
+    println!("{:?}", bmres);
 
     // test_matrix_berlekamp_massey_simple();
+
+    // test_matrix_berlekamp_massey_simple2();
+    // return;
+    let delta = seq[0].len();
+    let seq2 = vecvec_to_symmetric_matrix_list(&seq, num_v);
+    let res = matrix_berlekamp_massey(&seq2, delta, prime as i64).unwrap();
+    let res2 = vec_matrix_to_poly_matrix(&res,  prime as i64);
+    let res3 = top_invariant_factor(res2.clone());
+    println!("Matrix Berlekamp-Massey result: {:}", res3.deg());
+    println!("{:?}", res3);
+    println!("{:?}", res2);
 
 }

@@ -1,7 +1,7 @@
 use nalgebra::DMatrix;
 use std::fmt;
 
-const P: i64 = 5; // change as needed
+// const P: i64 = 5; // change as needed
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Poly {
@@ -20,9 +20,9 @@ impl Poly {
         Self { coeffs , p}
     }
 
-    fn zero() -> Self { Self { coeffs: vec![], p : P } }
+    fn zero() -> Self { Self { coeffs: vec![], p : 0 } }
     fn zerop(p:i64) -> Self { Self { coeffs: vec![], p : p } }
-    fn one() -> Self { Self::new(vec![1], P) }
+    fn one() -> Self { Self::new(vec![1], 0) }
     fn is_zero(&self) -> bool { self.coeffs.iter().all(|&c| c == 0) }
     pub fn deg(&self) -> usize {
         let mut deg = 0;
@@ -38,7 +38,7 @@ impl Poly {
     fn lc(&self) -> i64 { *self.coeffs.last().unwrap_or(&0) }
 
     fn scale(&self, c: i64) -> Self {
-        let c = (c % P + P) % P;
+        let c = (c % self.p + self.p) % self.p;
         if c == 0 { return Poly::zero(); }
         Poly::new(self.coeffs.iter().map(|x| x * c).collect(), self.p)
     }
@@ -314,4 +314,24 @@ pub fn vec_matrix_to_poly_matrix(vecmats: &[DMatrix<i64>], p:i64) -> DMatrix<Pol
     result
 }
 
+pub fn vecvec_to_symmetric_poly_matrix<T : Into<i64>+ 'static+Clone>(vecs: &[Vec<T>],n:usize, p:T) -> DMatrix<Poly> {
+    assert_eq!(vecs.len(), (n*(n+1)/2) as usize, "vecs length must be n*(n+1)/2");
+    let p = p.into();
+    // let deg = vecs[0].len();
+    let mut result = DMatrix::from_element(n, n, Poly::zerop(p));
 
+
+    let mut ii=0;
+    for i in 0..n {
+        for j in i..n {
+            let coeff:Vec<i64> = vecs[ii].clone().into_iter().map(|x| x.into()).collect();
+            // if !coeff.any(|) != 0 {
+                result[(i, j)] = Poly::new(coeff.clone(), p);
+                result[(j, i)] = Poly::new(coeff, p);
+            // }
+            ii += 1;
+        }
+    }
+
+    result
+}
