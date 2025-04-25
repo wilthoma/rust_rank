@@ -8,113 +8,70 @@ type Matrix<T> = DMatrix<T>;
 
 // use std::cmp::{min, max};
 
-pub fn matrix_berlekamp_massey(
-    m_coeffs: &[Matrix<i64>], // M0, M1, ..., Mδ
-    delta: usize,
-    p: i64,
-) -> Result<Vec<Matrix<i64>>, &'static str> {
-    let n = m_coeffs[0].nrows();
-    let mut f = Matrix::<i64>::zeros(n, 2 * n);
+/// Matrix Berlekamp-Massey algorithm
+fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<Vec<DMatrix<i64>>> {
+    let n = m[0].nrows();
+    let mut f: Vec<DMatrix<i64>> = vec![DMatrix::zeros(n, 2 * n); 1];
     for i in 0..n {
-        f[(i, i)] = 1; // f ← [I 0]
+        f[0][(i, i)] = 1;
     }
+    println!("1");
 
     let mut d = vec![0; n];
-    d.extend(vec![1; n]); // d1..N ← 0; dN+1..2N ← 1
+    d.extend(vec![1; n]);
 
+    let mut t = -1;
     let mut beta = 1;
-    let mut sigma = 0;
-    let mut mu = 0;
-    let mut t: usize = 0;
+    let mut sigma: usize = d.iter().take(n).sum();
+    let mut mu: usize = *d.iter().take(n).max().unwrap();
 
-    loop {
-        if beta >= delta - sigma + mu + 1 {
-            break;
-        }
-
-        // MBM3: increment t
-        if t >= m_coeffs.len() {
-            return Err("Ran out of M(z) coefficients");
-        }
-
-        // MBM4: Ξ = coeff(t; M(z) * f(z))
-        let mut xi = Matrix::<i64>::zeros(n, 2 * n);
-        for k in 0..=t {
-            if k < m_coeffs.len() {
-                let m_k = &m_coeffs[k];
-                let f_tk = f.clone().map(|x| x); // clone f(z)
-                for j in 0..2 * n {
-                    let fj = f_tk.column(j).into_owned();
-                    let mut fj_tk = fj.clone();
-                    //Matrix::<i64>::zeros(n, 1);
-                    if t < k {
-                        fj_tk.copy_from(&Matrix::<i64>::zeros(n, 1));
-                    } 
-                    let m_col = m_k * fj_tk;
-                    for row in 0..n {
-                        xi[(row, j)] = (xi[(row, j)] + m_col[(row, 0)]) % p;
-                    }
-                }
-            }
-        }
-
-        // MBM5: Gaussian elimination
-        let tau = auxiliary_gaussian_elimination(&xi, &mut d, t, n, p);
-
-        // MBM6: dN+i += 1 for i in 1..=N
-        for i in n..2 * n {
-            d[i] += 1;
-        }
-
-        // MBM7: update β, μ, σ
-        beta = *d[n..2 * n].iter().min().unwrap();
-        mu = *d[0..n].iter().max().unwrap();
-        sigma = d[0..n].iter().sum();
-
-        // MBM8: fail if σ ≥ δ + 1
-        if sigma >= delta + 1 {
-            return Err("insufficient bound");
-        }
-
-        // MBM9: f(z) ← f(z) · τ · diag(IN, z·IN)
-        let mut diag = Matrix::<i64>::identity(2 * n, 2 * n);
-        for i in n..2 * n {
-            diag[(i, i)] = 0;
-        }
-        let mut z_diag = Matrix::<i64>::identity(2 * n, 2 * n);
-        for i in n..2 * n {
-            z_diag[(i, i)] = 1; // represents multiplication by z
-        }
-        let new_f = f.clone() * tau * z_diag;
-        f = new_f.map(|x| x % p);
-
+    while beta < delta - sigma + mu + 1 {
         t += 1;
-    }
 
-    // MBM10–11: extract minimal matrix generator
-    let mut generator = vec![];
-    for j in 0..n {
-        let deg = d[j];
-        let mut poly = vec![Matrix::<i64>::zeros(n, n); deg + 1];
-        for i in 0..=deg {
-            for row in 0..n {
-                let val = f[(row, j)];
-                poly[deg - i][(row, j)] = val;
+        let mut phi_t = DMatrix::zeros(n, 2 * n);
+        for (i, mi) in m.iter().enumerate() {
+            if i > t as usize { break; }
+            if t as usize - i < f.len() {
+                phi_t += mi * &f[t as usize - i];
+                phi_t.apply(|x| *x = (*x % p + p) % p);
             }
         }
-        generator.push(poly);
-    }
+        println!("2 {}", t);
+        // MBM 5
+        let (tau, new_d) = auxiliary_gaussian_elimination(&phi_t, &d, p);
+        d = new_d;
 
-    // Convert from Vec<Vec<Matrix>> to Vec<Matrix> of polynomial coefficients
-    let max_deg = generator.iter().map(|poly| poly.len()).max().unwrap_or(0);
-    let mut result = vec![Matrix::<i64>::zeros(n, n); max_deg];
-    for j in 0..n {
-        for (i, mat) in generator[j].iter().enumerate() {
-            result[i] = (&result[i] + mat).map(|x| x % p);
+        // MBM 6
+        for i in n..2*n {
+            d[i] = d[i]+1;
         }
+
+        sigma = d.iter().take(n).sum();
+        mu = *d.iter().take(n).max().unwrap();
+        beta = *d.iter().skip(n).min().unwrap();
+
+        if sigma >= delta + 1 {
+            println!("Insufficient bound.");
+            return None;
+        }
+        println!("3");
+        f = update_f(&f, &tau, n, delta + 1, p);
     }
 
-    Ok(result)
+    println!("4");
+    // let mut F = Vec::new();
+    // for j in 0..n {
+    //     let mut poly = vec![DMatrix::zeros(n, 1); d[j] + 1];
+    //     for (k, coeff) in f.iter().enumerate() {
+    //         if k > d[j] { break; }
+    //         for i in 0..n {
+    //             poly[d[j] - k][(i, 0)] = coeff[(i, j)];
+    //         }
+    //     }
+    //     F.push(poly.iter().fold(DMatrix::zeros(n, 1), |acc, x| acc + x));
+    // }
+
+    Some(f)
 }
 
 // /// Builds a Matrix<T> of size (N x 2N) with the coefficient of z^k from each column polynomial in f
@@ -167,7 +124,11 @@ pub fn matrix_berlekamp_massey(
 /// Multiply two polynomials of matrices modulo z^delta
 fn poly_mat_mul(a: &[DMatrix<i64>], b: &[DMatrix<i64>], delta: usize, p: i64) -> Vec<DMatrix<i64>> {
     let n = a[0].nrows();
-    let mut result = vec![DMatrix::zeros(n, n); delta];
+    let nc = a[0].ncols();
+    let nb = b[0].nrows();
+    let nbc = b[0].ncols();
+    print!("poly_mat_mul: a: {}x{}, b: {}x{}", n, nc, nb, nbc);
+    let mut result = vec![DMatrix::zeros(n, nc); delta];
     for i in 0..a.len() {
         for j in 0..b.len() {
             if i + j < delta {
@@ -179,123 +140,49 @@ fn poly_mat_mul(a: &[DMatrix<i64>], b: &[DMatrix<i64>], delta: usize, p: i64) ->
     result
 }
 
-/// Shift auxiliary part of f(z) by one degree (multiply by z)
 fn shift_auxiliary_part(f: &mut Vec<DMatrix<i64>>, n: usize, p: i64) {
-    f.insert(0, DMatrix::zeros(f[0].nrows(), 2 * n));
-    f.truncate(f.len());
-    for mat in f.iter_mut() {
-        for i in 0..n {
-            for j in 0..n {
-                mat[(i, n + j)] = mat[(i, n + j)] % p;
+    println!("shift");
+    let rows = f[0].nrows();
+    let mut shifted = vec![DMatrix::zeros(rows, 2 * n); f.len() + 1];
+
+    // Shift auxiliary part (columns n..2n) one degree up
+    for i in 0..f.len() {
+        for row in 0..rows {
+            for col in 0..n {
+                shifted[i + 1][(row, n + col)] = f[i][(row, n + col)] % p;
             }
         }
     }
+
+    // Copy generator part (columns 0..n) unshifted
+    for i in 0..f.len() {
+        for row in 0..rows {
+            for col in 0..n {
+                shifted[i][(row, col)] = f[i][(row, col)] % p;
+            }
+        }
+    }
+    println!("/shift");
+
+    // Truncate to original length
+    // shifted.truncate(f.len());
+    *f = shifted;
 }
 
 /// Update MBM9 correctly: f(z) <- f(z) * tau, then shift auxiliary part by z
 fn update_f(f: &Vec<DMatrix<i64>>, tau: &DMatrix<i64>, n: usize, delta: usize, p: i64) -> Vec<DMatrix<i64>> {
+    println!("update");
     let mut new_f = poly_mat_mul(f, &[tau.clone()], delta + 1, p); // +1 to allow for shift
     shift_auxiliary_part(&mut new_f, n, p);
     new_f.truncate(delta);
+    println!("/update");
     new_f
 }
 
-fn auxiliary_gaussian_elimination(
-    xi: &Matrix<i64>, // Ξ ∈ K^{N×2N}
-    d: &mut Vec<usize>, // degrees
-    t: usize,
-    n: usize,
-    p: i64,
-) -> Matrix<i64> {
-    let two_n = 2 * n;
-    let mut tau = Matrix::<i64>::identity(two_n, two_n);
-    let mut xi = xi.clone(); // Work on a local copy
-
-    let mut a_set: Vec<usize> = (0..n).collect();
-
-    for i in 0..n {
-        let mut beta_i: Vec<usize> = a_set
-            .iter()
-            .filter(|&&j| xi[(i, j)] % p != 0)
-            .cloned()
-            .collect();
-        beta_i.push(n + i);
-
-        if beta_i.is_empty() {
-            continue;
-        }
-
-        let &l = beta_i.iter().min_by_key(|&&j| d[j]).unwrap();
-        let l = if l < n && beta_i.contains(&(n + i)) { n + i } else { l };
-        beta_i.retain(|&x| x != l);
-
-        for &j in &beta_i {
-            let pivot = xi[(i, l)].rem_euclid(p);
-            if pivot == 0 {
-                continue;
-            }
-            let factor = (xi[(i, j)] * modinv(pivot, p)).rem_euclid(p);
-
-            if l == n + i {
-                // GE9-10
-                for row in 0..n {
-                    xi[(row, j)] = (xi[(row, j)] - factor * xi[(row, l)]).rem_euclid(p);
-                }
-                for row in 0..two_n {
-                    tau[(row, j)] = (tau[(row, j)] - factor * tau[(row, l)]).rem_euclid(p);
-                }
-            } else if j < n + i {
-                // GE13-14
-                for row in 0..n {
-                    xi[(row, j)] = (xi[(row, j)] - factor * xi[(row, l)]).rem_euclid(p);
-                }
-                for row in 0..two_n {
-                    tau[(row, j)] = (tau[(row, j)] - factor * tau[(row, l)]).rem_euclid(p);
-                }
-            } else if j == n + i {
-                if xi[(i, n + i)] % p != 0 {
-                    // GE17-20
-                    let inv = modinv(xi[(i, n + i)], p);
-                    let factor = (-xi[(i, l)] * inv).rem_euclid(p);
-                    for row in 0..n {
-                        xi[(row, n + i)] = (factor * xi[(row, n + i)] + xi[(row, l)]).rem_euclid(p);
-                    }
-                    for row in 0..two_n {
-                        tau[(row, n + i)] = (factor * tau[(row, n + i)] + tau[(row, l)]).rem_euclid(p);
-                    }
-                    for row in 0..n {
-                        xi.swap((row, l), (row, n + i));
-                    }
-                    tau.swap_columns(l, n + i);
-                    d.swap(l, n + i);
-                } else {
-                    // GE22-24
-                    for row in 0..two_n {
-                        tau[(row, n + i)] = (tau[(row, n + i)] + tau[(row, l)]).rem_euclid(p);
-                    }
-                    d.swap(l, n + i);
-                }
-            }
-        }
-
-        a_set.retain(|&x| x != l);
-    }
-
-    // Final update of degrees
-    for col in 0..two_n {
-        if xi.column(col).iter().any(|&x| x % p != 0) {
-            d[col] = t + 1;
-        }
-    }
-
-    tau
-}
-
-
-
+/// Modular inverse using the extended Euclidean algorithm
 fn modinv(a: i64, p: i64) -> i64 {
     let (mut t, mut new_t) = (0, 1);
-    let (mut r, mut new_r) = (p, a.rem_euclid(p));
+    let (mut r, mut new_r) = (p, a);
 
     while new_r != 0 {
         let quotient = r / new_r;
@@ -306,12 +193,89 @@ fn modinv(a: i64, p: i64) -> i64 {
     }
 
     if r > 1 {
-        panic!("modinv does not exist");
+        panic!("a is not invertible");
     }
     if t < 0 {
         t += p;
     }
     t
+}
+
+/// Perform auxiliary Gaussian elimination on phi_t and return transformation matrix tau and updated degrees
+fn auxiliary_gaussian_elimination(phi_t: &DMatrix<i64>, d: &[usize], p: i64) -> (DMatrix<i64>, Vec<usize>) {
+    let n = phi_t.nrows();
+    let mut tau = DMatrix::identity(2 * n, 2 * n);
+    let mut phi = phi_t.clone();
+    let mut d = d.to_vec();
+    let mut a: Vec<usize> = (0..n).collect();
+
+    println!("a");
+    for i in 0..n {
+        let mut b_i: Vec<usize> = a.iter().copied().filter(|&j| phi[(i, j)] % p != 0).collect();
+        b_i.push(n + i);
+
+        if b_i.is_empty() {
+            continue;
+        }
+        println!("b");
+
+        let &l = b_i.iter().min_by_key(|&&j| d[j]).unwrap();
+        b_i.retain(|&j| j != l);
+
+        for &j in &b_i {
+            if l == n + i {
+                if phi[(i, n + i)] != 0 {
+                    let inv = modinv(phi[(i, n + i)], p);
+                    let factor:i64 = (phi[(i, j)] * inv).rem_euclid(p);
+                    for row in 0..n {
+                        phi[(row, j)] = (phi[(row, j)] - factor * phi[(row, n + i)]).rem_euclid(p);
+                    }
+                    for row in 0..2 * n {
+                        let tmp : i64 = tau[(row, j)] - factor  * tau[(row, n + i)];
+                        tau[(row, j)] = tmp.rem_euclid(p);
+                    }
+                }
+            } else if j < n + i {
+                if phi[(i, l)] != 0 {
+                    let inv = modinv(phi[(i, l)], p);
+                    let factor = (phi[(i, j)] * inv).rem_euclid(p);
+                    for row in 0..n {
+                        phi[(row, j)] = (phi[(row, j)] - factor * phi[(row, l)]).rem_euclid(p);
+                    }
+                    for row in 0..2 * n {
+                        tau[(row, j)] = (tau[(row, j)] - factor * tau[(row, l)]).rem_euclid(p);
+                    }
+                }
+            } else if j == n + i {
+                if phi[(i, n + i)] != 0 {
+                    let inv = modinv(phi[(i, n + i)], p);
+                    let factor = (-phi[(i, l)] * inv).rem_euclid(p);
+                    for row in 0..n {
+                        phi[(row, n + i)] = (phi[(row, n + i)] * factor + phi[(row, l)]).rem_euclid(p);
+                    }
+                    for row in 0..2 * n {
+                        tau[(row, n + i)] = (tau[(row, n + i)] * factor + tau[(row, l)]).rem_euclid(p);
+                    }
+                    for row in 0..n {
+                        phi.swap((row, l), (row, n + i));
+                    }
+                    for row in 0..2 * n {
+                        tau.swap((row, l), (row, n + i));
+                    }
+                    d.swap(l, n + i);
+                } else {
+                    for row in 0..2 * n {
+                        tau[(row, n + i)] = (tau[(row, n + i)] + tau[(row, l)]).rem_euclid(p);
+                    }
+                    d.swap(l, n + i);
+                }
+            }
+        }
+
+        a.retain(|&j| j != l);
+    }
+
+    (tau, d)
 }
 
 
@@ -340,14 +304,15 @@ pub fn test_matrix_berlekamp_massey_simple() {
     let m_coeffs = vec![m0, m1, m2];
 
     // display error
-    let result = match matrix_berlekamp_massey(&m_coeffs, delta, p) {
-        Ok(g) => g,
-        Err(e) => {
-            eprintln!("Failed to compute minpoly: {:?}", e);
-            // triangle_counts.push(0);
-            return;
-        }
-    };
+    // let result = match matrix_berlekamp_massey(&m_coeffs, delta, p) {
+    //     Ok(g) => g,
+    //     Err(e) => {
+    //         eprintln!("Failed to compute minpoly: {:?}", e);
+    //         // triangle_counts.push(0);
+    //         return;
+    //     }
+    // };
+    let result = matrix_berlekamp_massey(&m_coeffs, delta, p).unwrap();
 
     println!("Matrix generator coefficients:");
     for (i, mat) in result.iter().enumerate() {
