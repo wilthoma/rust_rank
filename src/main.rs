@@ -318,8 +318,8 @@ fn main() {
             .expect("Failed to create thread pool");
     }
 
-    test_matrix_berlekamp_massey_simple();
-    return;
+    // test_matrix_berlekamp_massey_simple();
+    // return;
 
 
     // load the matrix file -- TODO: matrix loading must be moved after the wdm loading since the prime number is needed for matrix loading
