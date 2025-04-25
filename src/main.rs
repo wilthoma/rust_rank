@@ -498,6 +498,7 @@ fn main() {
 
     // test_matrix_berlekamp_massey_simple2();
     // return;
+    // TODO : add leading coeff to seq!!
     let delta = seq[0].len();
     let seq2 = vecvec_to_symmetric_matrix_list(&seq, num_v);
     let res = matrix_berlekamp_massey(&seq2, delta, prime as i64).unwrap();
