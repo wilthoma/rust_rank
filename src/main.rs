@@ -8,8 +8,9 @@ mod wdm_files;
 mod block_berlekamp_massey;
 mod blockbmtest;
 mod vectorstream;
+mod invariant_factor;
 use vectorstream::*;
-use blockbmtest::test_matrix_berlekamp_massey_simple;
+use blockbmtest::test_matrix_berlekamp_massey_simple2;
 use block_berlekamp_massey::block_berlekamp_massey;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
 use wdm_files::{save_wdm_file_sym, load_wdm_file_sym};
@@ -318,8 +319,8 @@ fn main() {
             .expect("Failed to create thread pool");
     }
 
-    // test_matrix_berlekamp_massey_simple();
-    // return;
+    test_matrix_berlekamp_massey_simple2();
+    return;
 
 
     // load the matrix file -- TODO: matrix loading must be moved after the wdm loading since the prime number is needed for matrix loading

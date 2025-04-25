@@ -2,6 +2,8 @@
 
 
 use nalgebra::DMatrix;
+
+use crate::invariant_factor::{top_invariant_factor, vec_matrix_to_poly_matrix};
 // use std::ops::{Add, Mul, Sub};
 
 type Matrix<T> = DMatrix<T>;
@@ -15,7 +17,7 @@ fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<V
     for i in 0..n {
         f[0][(i, i)] = 1;
     }
-    println!("1");
+    // println!("1");
 
     let mut d = vec![0; n];
     d.extend(vec![1; n]);
@@ -36,7 +38,7 @@ fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<V
                 phi_t.apply(|x| *x = (*x % p + p) % p);
             }
         }
-        println!("2 {}", t);
+        // println!("2 {}", t);
         // MBM 5
         let (tau, new_d) = auxiliary_gaussian_elimination(&phi_t, &d, p);
         d = new_d;
@@ -58,20 +60,24 @@ fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Option<V
         f = update_f(&f, &tau, n, delta + 1, p);
     }
 
-    println!("4");
-    // let mut F = Vec::new();
-    // for j in 0..n {
-    //     let mut poly = vec![DMatrix::zeros(n, 1); d[j] + 1];
-    //     for (k, coeff) in f.iter().enumerate() {
-    //         if k > d[j] { break; }
-    //         for i in 0..n {
-    //             poly[d[j] - k][(i, 0)] = coeff[(i, j)];
-    //         }
-    //     }
-    //     F.push(poly.iter().fold(DMatrix::zeros(n, 1), |acc, x| acc + x));
-    // }
+    // println!("4");
+    let maxd = d.iter().take(n).max().unwrap();
+    let mut F = vec![DMatrix::zeros(n, n); maxd + 1];
+    for j in 0..n {
+        for (k, coeff) in f.iter().enumerate() {
+            if k > d[j] { break; }
+            for i in 0..n {
+                F[d[j]-k][(i, j)] = coeff[(i, j)];
+                //poly[d[j] - k][(i, 0)] = coeff[(i, j)];
+            }
+        }
+    }
+    // println!("Result........");
+    // print!("{:?}", d);
+    // printseries(&f, 4);
+    // printseries(&F, 4);
 
-    Some(f)
+    Some(F)
 }
 
 // /// Builds a Matrix<T> of size (N x 2N) with the coefficient of z^k from each column polynomial in f
@@ -127,7 +133,7 @@ fn poly_mat_mul(a: &[DMatrix<i64>], b: &[DMatrix<i64>], delta: usize, p: i64) ->
     let nc = a[0].ncols();
     let nb = b[0].nrows();
     let nbc = b[0].ncols();
-    print!("poly_mat_mul: a: {}x{}, b: {}x{}", n, nc, nb, nbc);
+    // print!("poly_mat_mul: a: {}x{}, b: {}x{}", n, nc, nb, nbc);
     let mut result = vec![DMatrix::zeros(n, nc); delta];
     for i in 0..a.len() {
         for j in 0..b.len() {
@@ -141,7 +147,7 @@ fn poly_mat_mul(a: &[DMatrix<i64>], b: &[DMatrix<i64>], delta: usize, p: i64) ->
 }
 
 fn shift_auxiliary_part(f: &mut Vec<DMatrix<i64>>, n: usize, p: i64) {
-    println!("shift");
+    // println!("shift");
     let rows = f[0].nrows();
     let mut shifted = vec![DMatrix::zeros(rows, 2 * n); f.len() + 1];
 
@@ -162,7 +168,7 @@ fn shift_auxiliary_part(f: &mut Vec<DMatrix<i64>>, n: usize, p: i64) {
             }
         }
     }
-    println!("/shift");
+    // println!("/shift");
 
     // Truncate to original length
     // shifted.truncate(f.len());
@@ -171,11 +177,11 @@ fn shift_auxiliary_part(f: &mut Vec<DMatrix<i64>>, n: usize, p: i64) {
 
 /// Update MBM9 correctly: f(z) <- f(z) * tau, then shift auxiliary part by z
 fn update_f(f: &Vec<DMatrix<i64>>, tau: &DMatrix<i64>, n: usize, delta: usize, p: i64) -> Vec<DMatrix<i64>> {
-    println!("update");
+    // println!("update");
     let mut new_f = poly_mat_mul(f, &[tau.clone()], delta + 1, p); // +1 to allow for shift
     shift_auxiliary_part(&mut new_f, n, p);
     new_f.truncate(delta);
-    println!("/update");
+    // println!("/update");
     new_f
 }
 
@@ -318,4 +324,85 @@ pub fn test_matrix_berlekamp_massey_simple() {
     for (i, mat) in result.iter().enumerate() {
         println!("z^{}:\n{}", i, mat);
     }
+}
+
+pub fn printseries(v : &Vec<Matrix<i64>>, d : usize) {
+    for i in 0..d {
+        if i>=v.len() {
+            break;
+        }
+        println!("z^{}:\n{}", i, v[i]);
+    }
+}
+
+
+pub fn test_matrix_berlekamp_massey_simple2() {
+    let p = 7;
+    let n = 2;
+    let delta = 6;
+
+    // Define M0, M1, M2 in F_7
+    let m0 = Matrix::from_vec(n, n, vec![
+        0, 1,
+        0, 0
+    ]);
+
+    let m1 = Matrix::from_vec(n, n, vec![
+        1, 1,
+        0, 1
+    ]);
+
+    let m2 = Matrix::from_vec(3, 3, vec![
+        1, 1,0,
+        0, 1,1,
+        0,0,1
+    ]);
+
+    let m0_series: Vec<_> = (0..10).map(|i| m0.pow(i)).collect();
+    let m1_series: Vec<_>  = (0..10).map(|i| m1.pow(i)).collect();
+    let m2_series: Vec<_>  = (0..10).map(|i| m2.pow(i)).collect();
+
+    printseries(&m0_series, 4);
+    printseries(&m1_series, 4);
+    printseries(&m2_series, 4);
+
+    // display error
+    // let result = match matrix_berlekamp_massey(&m_coeffs, delta, p) {
+    //     Ok(g) => g,
+    //     Err(e) => {
+    //         eprintln!("Failed to compute minpoly: {:?}", e);
+    //         // triangle_counts.push(0);
+    //         return;
+    //     }
+    // };
+    let result0 = matrix_berlekamp_massey(&m0_series, delta, p).unwrap();
+    
+    let result1 = matrix_berlekamp_massey(&m1_series, delta, p).unwrap();
+    let result2 = matrix_berlekamp_massey(&m2_series, delta, p).unwrap();
+
+
+    println!("Matrix generator coefficients:");
+    for (i, mat) in result0.iter().enumerate() {
+        println!("z^{}:\n{}", i, mat);
+    }
+    println!("Matrix generator coefficients:");
+    for (i, mat) in result1.iter().enumerate() {
+        println!("z^{}:\n{}", i, mat);
+        
+    }
+    println!("Matrix generator coefficients:");
+
+    printseries(&result2, 4);
+
+    // 
+    println!("Top invariant factors");
+    let f0 = top_invariant_factor(vec_matrix_to_poly_matrix(&result0));
+    println!("{:?}", f0);
+    let f1 = top_invariant_factor(vec_matrix_to_poly_matrix(&result1));
+    println!("{:?}", f1);
+
+    let f2 = top_invariant_factor(vec_matrix_to_poly_matrix(&result2));
+    println!("{:?}", f2);
+
+
 }
