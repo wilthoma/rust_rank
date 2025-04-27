@@ -39,10 +39,10 @@ use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 type MyInt = u32;
 
 const THEPRIME: u32 = 27644437; // A large prime number for modular arithmetic
-const THESMALLPRIME : u32 = 3323;
+// const THESMALLPRIME : u32 = 3323;
 const THETINYPRIME : u16 = 23;
 // const THESMALLPRIME : u32 = 6481;
-// const THESMALLPRIME : u32 = 5669;
+const THESMALLPRIME : u32 = 5669;
 
 const REPORT_AFTER: f64 = 1.0; // seconds
 
