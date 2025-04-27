@@ -2,6 +2,7 @@
 
 
 use nalgebra::DMatrix;
+use petgraph::algo::k_shortest_path;
 
 use crate::{invariant_factor::{top_invariant_factor, vec_matrix_to_poly_matrix}, matrices::GoodInteger};
 // use std::ops::{Add, Mul, Sub};
@@ -27,9 +28,14 @@ pub fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Opti
     let mut sigma: usize = d.iter().take(n).sum();
     let mut mu: usize = *d.iter().take(n).max().unwrap();
 
-    while beta < delta - sigma + mu + 1 {
+    while beta < delta - sigma + mu + 1 && t+2< m.len() as i64 { // todo: termination condition
         t += 1;
-        print!("{:?}", d);
+
+        if t % 100 == 0 {
+            println!("Block BM progress t: {}", t);
+        }
+        // println!("{} {}",t, m.len());
+        // print!("{:?}", d);
 
         let mut phi_t = DMatrix::zeros(n, 2 * n);
         for (i, mi) in m.iter().enumerate() {
@@ -51,7 +57,7 @@ pub fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Opti
         beta = *d.iter().skip(n).min().unwrap();
 
         if sigma >= delta + 1 {
-            println!("Insufficient bound.");
+            println!("Insufficient bound. {}, {:?}", t, d);
             return None;
         }
         // println!("3");
@@ -61,10 +67,12 @@ pub fn matrix_berlekamp_massey(m: &[DMatrix<i64>], delta: usize, p: i64) -> Opti
                 for i in n..2*n {
                     d[i] = d[i]+1;
                 }
+        // println!("d: {:?} f: {:?}", d, f.iter().map(|x| (x[(0,0)],x[(0,1)])).collect::<Vec<_>>());
     }
 
     // println!("4");
     let maxd = d.iter().take(n).max().unwrap();
+    // println!("maxd: {:?}", maxd);
     let mut F = vec![DMatrix::zeros(n, n); maxd + 1];
     for j in 0..n {
         for (k, coeff) in f.iter().enumerate() {
@@ -212,6 +220,7 @@ fn modinv(a: i64, p: i64) -> i64 {
 
 /// Perform auxiliary Gaussian elimination on phi_t and return transformation matrix tau and updated degrees
 fn auxiliary_gaussian_elimination(phi_t: &DMatrix<i64>, d: &[usize], p: i64) -> (DMatrix<i64>, Vec<usize>) {
+    // println!("{:?}", phi_t);
     let n = phi_t.nrows();
     let mut tau = DMatrix::identity(2 * n, 2 * n);
     let mut phi = phi_t.clone();
@@ -245,6 +254,7 @@ fn auxiliary_gaussian_elimination(phi_t: &DMatrix<i64>, d: &[usize], p: i64) -> 
                     for row in 0..2 * n {
                         let tmp : i64 = tau[(row, j)] - factor  * tau[(row, n + i)];
                         tau[(row, j)] = tmp.rem_euclid(p);
+                        // println!("{:?} ", tau);
                     }
                 }
             } else if j < n + i {
@@ -280,11 +290,10 @@ fn auxiliary_gaussian_elimination(phi_t: &DMatrix<i64>, d: &[usize], p: i64) -> 
                         tau[(row, n + i)] = (tau[(row, n + i)] + tau[(row, l)]).rem_euclid(p);
                     }
                     d.swap(l, n + i);
+                    a.retain(|&j| j != l);
                 }
             }
         }
-
-        a.retain(|&j| j != l);
     }
 
     (tau, d)
@@ -429,4 +438,160 @@ pub fn vecvec_to_symmetric_matrix_list<T:GoodInteger+Into<i64>>(v: &Vec<Vec<T>>,
         }
     }
     m
+}
+
+pub fn is_generating_poly(poly : &Vec<Matrix<i64>>, seq : &Vec<Matrix<i64>>, p:i64) -> bool {
+    let n = poly[0].nrows();
+    let k = poly.len();
+    let N = seq.len();
+    
+    for l in 0..N-k {
+        let mut sum = Matrix::zeros(n, n);
+        for i in 0..k {
+            sum += &seq[l+i] * &poly[i];
+            sum.apply(|x| *x = (*x % p + p) % p);
+        }
+        if sum != Matrix::zeros(n, n) {
+            println!("Not generating poly {} {:?} {:?}",l, sum, seq[0]);
+            return false;
+        }
+    }
+    true
+}
+
+
+pub fn modular_rank(mat: &DMatrix<i64>, p: i64) -> usize {
+    let mut mat = mat.clone();
+    let nrows = mat.nrows();
+    let ncols = mat.ncols();
+
+    let mut rank = 0;
+
+    // Reduce entries modulo p
+    for i in 0..nrows {
+        for j in 0..ncols {
+            mat[(i, j)] = (mat[(i, j)] % p + p) % p;
+        }
+    }
+
+    for col in 0..ncols {
+        // 1. Find a pivot row
+        let mut pivot_row = None;
+        for row in rank..nrows {
+            if mat[(row, col)] != 0 {
+                pivot_row = Some(row);
+                break;
+            }
+        }
+
+        if let Some(pivot_idx) = pivot_row {
+            // 2. Swap pivot row into position
+            mat.swap_rows(rank, pivot_idx);
+
+            // 3. Normalize pivot row (optional for rank, but clean)
+            let inv = modinv(mat[(rank, col)], p);
+            for j in col..ncols {
+                mat[(rank, j)] = (mat[(rank, j)] * inv) % p;
+            }
+
+            // 4. Eliminate rows below
+            for row in (rank + 1)..nrows {
+                let factor = mat[(row, col)];
+                for j in col..ncols {
+                    mat[(row, j)] = (mat[(row, j)] - factor * mat[(rank, j)]).rem_euclid(p);
+                }
+            }
+
+            rank += 1;
+            if rank == nrows {
+                break;
+            }
+        }
+    }
+
+    rank
+}
+
+pub fn modular_determinant(mat: &DMatrix<i64>, p: i64) -> i64 {
+    assert!(mat.is_square(), "Matrix must be square to compute determinant mod p");
+
+    let mut mat = mat.clone();
+    let n = mat.nrows();
+    let mut det = 1i64;
+    let mut sign = 1i64;
+
+    // Reduce all entries mod p
+    for i in 0..n {
+        for j in 0..n {
+            mat[(i, j)] = (mat[(i, j)] % p + p) % p;
+        }
+    }
+
+    for i in 0..n {
+        // 1. Find pivot
+        let mut pivot_row = None;
+        for row in i..n {
+            if mat[(row, i)] != 0 {
+                pivot_row = Some(row);
+                break;
+            }
+        }
+
+        if let Some(pivot_idx) = pivot_row {
+            if pivot_idx != i {
+                mat.swap_rows(i, pivot_idx);
+                sign = -sign;
+            }
+
+            let pivot = mat[(i, i)];
+            det = (det * pivot).rem_euclid(p);
+
+            let inv = modinv(pivot, p);
+
+            // 2. Eliminate rows below
+            for row in (i + 1)..n {
+                let factor = mat[(row, i)] * inv % p;
+                for col in i..n {
+                    mat[(row, col)] = (mat[(row, col)] - factor * mat[(i, col)]).rem_euclid(p);
+                }
+            }
+        } else {
+            // Pivot = 0 → determinant is 0
+            return 0;
+        }
+    }
+
+    if sign == -1 {
+        det = (p - det).rem_euclid(p);
+    }
+
+    det
+}
+
+pub fn analyze_min_generators(poly : &Vec<Matrix<i64>>, p:i64)
+{
+    let n = poly[0].nrows();
+    let k = poly.len();
+    println!("Analyzing min generators ... {} found of max degree {}", poly[0].ncols(), poly.len());
+    println!("Matrix ranks by degree...");
+    for i in 0..poly.len() {
+        println!("{}: {}", i, modular_rank(&poly[i], p));
+    }
+    println!("Matrix determinants by degree...");
+    for i in 0..poly.len() {
+        println!("{}: {}", i, modular_determinant(&poly[i], p));
+    }
+    println!("Individual generator degrees...");
+    for j in 0..poly[0].ncols() {
+        let mut deg = 0;
+        for i in 0..poly.len() {
+            if poly[i].column(j).iter().any(|&x| x != 0) {
+                deg = i;
+            }
+        }
+        println!("Generator {} has degree: {}", j, deg);
+    }
+    // this assumes some luck...
+    let matrank = n*(k-3) + modular_rank(&poly[k-1], p) + modular_rank(&poly[0], p);
+    println!("Estimated matrix rank: {}", matrank);
 }

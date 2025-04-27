@@ -111,17 +111,20 @@ T: Copy + std::ops::Add<Output = T> + std::ops::Mul<Output = T> + std::ops::Rem<
     // let pt = T::from(p);
 
     // convert all sequences to u64
-    let useq: Vec<Vec<u64>> = seq.iter().map(|s| s.iter().map(|&x| (if x>=T::zero() {x} else {x+p}).into() ).collect()).collect();
+    let useq: Vec<u64> = seq[0].iter().map(|&x| (if x>=T::zero() {x} else {x+p}).into() ).collect();
+    // let useq: Vec<Vec<u64>> = seq.iter().map(|s| s.iter().map(|&x| (if x>=T::zero() {x} else {x+p}).into() ).collect()).collect();
 
-    let bmres: Vec<Vec<u64>> = useq.iter().map(|s| bubblemath::linear_recurrence::berlekamp_massey(s, p.into()))
-        .collect();
+    let bmres: Vec<u64> = bubblemath::linear_recurrence::berlekamp_massey(&useq, p.into());
+    // let bmres: Vec<Vec<u64>> = useq.iter().map(|s| bubblemath::linear_recurrence::berlekamp_massey(s, p.into()))
+    // .collect();
 
-    for v in bmres.iter(){
-        println!("BM individual length: {}", v.len())  ;
-    }
+    // for v in bmres.iter(){
+        println!("BM individual length: {}", bmres.len())  ;
+    // }
 
     // convert back to MyInt
-    let bmres: Vec<Vec<MyInt>> = bmres.iter().map(|s| s.iter().map(|&x| x as MyInt).collect()).collect();
+    let bmres: Vec<MyInt> = bmres.iter().map(|&x| x as MyInt).collect();
+    // let bmres: Vec<Vec<MyInt>> = bmres.iter().map(|s| s.iter().map(|&x| x as MyInt).collect()).collect();
     // return lcm_polynomials(&bmres, p );
-    return bmres[0].clone();
+    bmres
 }

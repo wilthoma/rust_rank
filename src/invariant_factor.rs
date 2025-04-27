@@ -5,8 +5,8 @@ use std::fmt;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Poly {
-    coeffs: Vec<i64>, // Coefficients mod P
-    p : i64
+    pub coeffs: Vec<i64>, // Coefficients mod P
+    pub p : i64
 }
 
 impl Poly {
@@ -253,7 +253,7 @@ pub fn top_invariant_factor(mut mat: DMatrix<Poly>) -> Poly {
                     mat[(i, j)] = mat[(i, j)].sub(&t);
                 }
                 // If the new entry has smaller degree than the pivot, swap
-                if mat[(i, rank)].deg() < mat[(rank, rank)].deg() {
+                if mat[(i, rank)].deg() < mat[(rank, rank)].deg() && !mat[(i, rank)].is_zero() {
                     mat.swap_rows(i, rank);
                 }
             }
@@ -267,7 +267,7 @@ pub fn top_invariant_factor(mut mat: DMatrix<Poly>) -> Poly {
                     let t = mat[(i, rank)].mul(&q);
                     mat[(i, j)] = mat[(i, j)].sub(&t);
                 }
-                if mat[(rank, j)].deg() < mat[(rank, rank)].deg() {
+                if mat[(rank, j)].deg() < mat[(rank, rank)].deg() && !mat[(rank, j)].is_zero() {
                     mat.swap_columns(j, rank);
                 }
             }
@@ -279,7 +279,11 @@ pub fn top_invariant_factor(mut mat: DMatrix<Poly>) -> Poly {
     // Top invariant factor is the last nonzero diagonal entry
     for i in (0..m.min(n)).rev() {
         if !mat[(i, i)].is_zero() {
-            return mat[(i, i)].clone();
+            let retp = mat[(i, i)].clone();
+            // normalize so that top coeff is 1 
+            let lc = retp.lc();
+            let invlc = mod_inv(lc, retp.p);
+            return retp.scale(invlc);
         }
     }
 

@@ -9,10 +9,13 @@ mod block_berlekamp_massey;
 mod blockbmtest;
 mod vectorstream;
 mod invariant_factor;
+mod polynomial;
+use nalgebra::DMatrix;
+use polynomial::{poly_matrix_determinant, top_invariant_factor, top_invariant_factor_fast, vec_matrix_to_poly_matrix3};
 use bubblemath::linear_recurrence::berlekamp_massey;
-use invariant_factor::{top_invariant_factor, vecvec_to_symmetric_poly_matrix, vec_matrix_to_poly_matrix};
+// use invariant_factor::{top_invariant_factor, vecvec_to_symmetric_poly_matrix, vec_matrix_to_poly_matrix};
 use vectorstream::*;
-use blockbmtest::{matrix_berlekamp_massey, test_matrix_berlekamp_massey_simple2, vecvec_to_symmetric_matrix_list};
+use blockbmtest::{analyze_min_generators, is_generating_poly, matrix_berlekamp_massey, test_matrix_berlekamp_massey_simple2, vecvec_to_symmetric_matrix_list};
 use block_berlekamp_massey::block_berlekamp_massey;
 use matrices::*; //{create_random_vector, create_random_vector_nozero, load_csr_matrix_from_sms, reorder_csr_matrix_by_keys, spy_plot, CsrMatrix, MyInt};
 use wdm_files::{save_wdm_file_sym, load_wdm_file_sym};
@@ -93,6 +96,25 @@ pub fn main_loop_s_mt2<T:GoodInteger, S:VectorStream<T>>(
     // let mut curv_result  = curv.clone();
     let to_be_produced = max_nlen - seq[0].len(); 
     let num_v = curv.len();
+
+    // add first entry to seq
+    if seq[0].len() == 0 {
+        let mut ii = 0;
+        for i in 0..num_v {
+            for j in i..num_v {
+                let vec1 = &curv[i];
+                let vec2 = &curv[j];
+                if use_vecp_parallel {
+                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
+                }
+                else {
+                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprime));
+                }
+                ii += 1;
+            }
+        }
+    }
+
     
     for _ in 0..to_be_produced/2 {
         let received_tokens = stream.next().unwrap();
@@ -341,6 +363,7 @@ fn main() {
 
     let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
     // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
+    // v[0][0]=2;
     let mut curv: Vec<Vec<MyInt>> = v.clone();
     let mut seq: Vec<Vec<MyInt>> = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
 
@@ -492,20 +515,37 @@ fn main() {
     println!("Time taken for Berlekamp-Massey: {:?}", duration);
     println!("Berlekamp-Massey result: {:?}", bmres.len());
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
-    println!("{:?}", bmres);
+    // println!("{:?}", bmres);
 
     // test_matrix_berlekamp_massey_simple();
 
     // test_matrix_berlekamp_massey_simple2();
     // return;
-    // TODO : add leading coeff to seq!!
-    let delta = seq[0].len();
+    let delta = v[0].len() *2; // seq[0].len()-2;
     let seq2 = vecvec_to_symmetric_matrix_list(&seq, num_v);
+    println!("Matrix Berlekamp-Massey...");
     let res = matrix_berlekamp_massey(&seq2, delta, prime as i64).unwrap();
-    let res2 = vec_matrix_to_poly_matrix(&res,  prime as i64);
-    let res3 = top_invariant_factor(res2.clone());
-    println!("Matrix Berlekamp-Massey result: {:}", res3.deg());
-    println!("{:?}", res3);
-    println!("{:?}", res2);
+    // println!("Matrix Berlekamp-Massey result: {:?}", res.len());
+    println!("Matrix Berlekamp-Massey result lenghth: {}, correct: {}", res.len(), is_generating_poly(&res, &seq2, prime as i64));
+    let res2 = vec_matrix_to_poly_matrix3(&res,  prime as i64);
+    println!("Invariant factors... ");
+    // let res3 = top_invariant_factor_fast(res2.clone());
+    // let res3 = top_invariant_factor(res2.clone());
+    analyze_min_generators(&res, prime as i64);
+    // take determinant of res2
+    // let res3 = poly_matrix_determinant(res2);
+    // println!("Matrix Berlekamp-Massey result: {}, correct: {}", res.len(), is_generating_poly(&res, &seq2, prime as i64));
+    // println!("Top invariant factor degree: {:?}", res3.deg());
+    // // println!("{:?}", res3);
+    // // println!("{:?}", res2);
+    // // println!("{:?}", res.iter().map(|x| x[(0,0)]).collect::<Vec<i64>>());
+
+    // // println!("In : {:?}", seq[0].iter().collect::<Vec<_>>());
+    // // println!("In2: {:?}", seq2.iter().map(|x| x[(0,0)]).collect::<Vec<_>>());
+    // // println!("Out  : {:?}", bmres);
+    // println!("Out3 : {:?}", res3.coeffs.iter().take(20).collect::<Vec<_>>());
+    // println!("Out2 : {:?}", res.iter().take(20).map(|x| x[(0,0)]).collect::<Vec<_>>());
+    // println!("Out-1: {:?}", bmres.iter().take(20).map(|x| x*(prime as u64-1)%(prime as u64)).collect::<Vec<_>>());
+
 
 }
