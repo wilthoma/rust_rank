@@ -517,21 +517,22 @@ fn main() {
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
     // println!("{:?}", bmres);
 
-    // test_matrix_berlekamp_massey_simple();
 
-    // test_matrix_berlekamp_massey_simple2();
-    // return;
-    let delta = v[0].len() *2; // seq[0].len()-2;
-    let seq2 = vecvec_to_symmetric_matrix_list(&seq, num_v);
-    println!("Matrix Berlekamp-Massey...");
-    let res = matrix_berlekamp_massey(&seq2, delta, prime as i64).unwrap();
-    // println!("Matrix Berlekamp-Massey result: {:?}", res.len());
-    println!("Matrix Berlekamp-Massey result lenghth: {}, correct: {}", res.len(), is_generating_poly(&res, &seq2, prime as i64));
-    let res2 = vec_matrix_to_poly_matrix3(&res,  prime as i64);
-    println!("Invariant factors... ");
-    // let res3 = top_invariant_factor_fast(res2.clone());
-    // let res3 = top_invariant_factor(res2.clone());
-    analyze_min_generators(&res, prime as i64);
+
+    // let delta = v[0].len() *2; // seq[0].len()-2;
+    // let seq2 = vecvec_to_symmetric_matrix_list(&seq, num_v);
+    // println!("Matrix Berlekamp-Massey...");
+    // let res = matrix_berlekamp_massey(&seq2, delta, prime as i64).unwrap();
+    // // println!("Matrix Berlekamp-Massey result: {:?}", res.len());
+    // println!("Matrix Berlekamp-Massey result lenghth: {}, correct: {}", res.len(), is_generating_poly(&res, &seq2, prime as i64));
+    // let res2 = vec_matrix_to_poly_matrix3(&res,  prime as i64);
+    // println!("Invariant factors... ");
+    // // let res3 = top_invariant_factor_fast(res2.clone());
+    // // let res3 = top_invariant_factor(res2.clone());
+    // analyze_min_generators(&res, prime as i64);
+
+
+
     // take determinant of res2
     // let res3 = poly_matrix_determinant(res2);
     // println!("Matrix Berlekamp-Massey result: {}, correct: {}", res.len(), is_generating_poly(&res, &seq2, prime as i64));
