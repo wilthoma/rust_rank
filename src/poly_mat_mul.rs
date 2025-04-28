@@ -1,0 +1,147 @@
+use bubblemath::linear_recurrence::poly_mul;
+// use num_traits::Zero;
+// use rayon::iter::IntoParallelIterator;
+
+use crate::ntt::{mod_add, mod_mul, ntt, NTTInteger};
+
+
+fn add_vects_in<T>(a : &mut Vec<T>, b : &Vec<T>, p : T) 
+where T : NTTInteger {
+    assert_eq!(a.len(), b.len(), "Vectors must be of the same length");
+    a.iter_mut().zip(b.iter()).for_each(|(a, b)| {
+        *a = mod_add(*a, *b, p);
+    });
+    // for i in 0..a.len() {
+    //     a[i] = (a[i] + b[i]) % p;
+    // }
+}
+
+pub fn poly_mat_mul_bubble(a: Vec<Vec<Vec<u64>>>, b: Vec<Vec<Vec<u64>>>, p: u64) -> Vec<Vec<Vec<u64>>> {
+    let m = a.len();
+    let n = a[0].len();
+    let k = b[0].len();
+    assert_eq!(n, b.len(), "Matrix dimensions do not match for multiplication");
+
+    let nlena = a[0][0].len();
+    let nlenb = b[0][0].len();
+    let nlenres = nlena + nlenb - 1;
+    let mut result = vec![vec![vec![0; nlenres]; k]; m];
+    for i in 0..m {
+        for j in 0..k {
+            for l in 0..n {
+                add_vects_in(&mut result[i][j], &poly_mul(&a[i][l], &b[l][j], p), p);
+            }
+        }
+    }
+    result
+
+}
+
+
+pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T) -> Vec<Vec<Vec<T>>> {
+    let m = a.len();
+    let n = a[0].len();
+    let k = b[0].len();
+    assert_eq!(n, b.len(), "Matrix dimensions do not match for multiplication");
+
+    let nlena = a[0][0].len();
+    let nlenb = b[0][0].len();
+    let nlenres = nlena + nlenb - 1;
+
+
+    // find correct out length adjusted to power of 2
+    let mut nlenres_adj: usize = 1;
+    while nlenres_adj < nlenres {
+        nlenres_adj <<= 1;
+    }
+
+    // adjust lengths of inputs
+    let mut fa = vec![vec![vec![T::zero(); nlenres_adj];n];m];
+    let mut fb = vec![vec![vec![T::zero(); nlenres_adj];k];n];
+    let mut fresult = vec![vec![vec![T::zero(); nlenres_adj];k];m];
+
+    for i in 0..m {
+        for j in 0..n {
+            for l in 0..nlena {
+                fa[i][j][l] = a[i][j][l];
+            }
+        }
+    }
+    for i in 0..n {
+        for j in 0..k {
+            for l in 0..nlenb {
+                fb[i][j][l] = b[i][j][l];
+            }
+        }
+    }
+    // compute ffts
+    for i in 0..m {
+        for j in 0..n {
+            ntt(&mut fa[i][j], false, p, root);
+        }
+    }
+    for i in 0..n {
+        for j in 0..k {
+            ntt(&mut fb[i][j], false, p, root);
+        }
+    }
+
+    // multiply matrices
+    for i in 0..m {
+        for j in 0..k {
+            for r in 0..n {
+                for l in 0..nlenres_adj {
+                    fresult[i][j][l] = mod_add(fresult[i][j][l], mod_mul(fa[i][r][l], fb[r][j][l],p), p);
+                }
+            }
+        }
+    }
+
+    // compute iffts qnd resize result
+    for i in 0..m {
+        for j in 0..k {
+            ntt(&mut fresult[i][j], true, p, root);
+            fresult[i][j].resize(nlenres, T::zero());
+        }
+    }
+
+    fresult
+}
+
+
+/// Multiplies two matrices of polynomials using FFT and reduces the result modulo a prime.
+/// p should be a large prime relative to reducetoprime and the sequence size so that no overflow can occur.
+pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T) -> Vec<Vec<Vec<T>>> {
+    // check whether prime is large enough for NTT
+    let mut max_power_of_two = 1;
+    let mut k = 0;
+    let deg_a = a[0][0].len();
+    let deg_b = b[0][0].len();
+    while (p.into() - 1) % (2 * max_power_of_two as u128 ) == 0 {
+        max_power_of_two *= 2;
+        k += 1;
+    }
+    let ntt_limit = max_power_of_two;
+
+    let required_size = (deg_a + deg_b).next_power_of_two();
+    assert!( required_size < ntt_limit, "Polynomials are too large for this modulus (NTT size too big)");
+
+    // no overflow possible?
+    assert!( reducetoprime.into()*reducetoprime.into() * 2 * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible)");
+
+    // multiply
+    let mut red = poly_mat_mul_fft(a, b, p, root);
+
+    // reduce mod smaller prime
+    let n = red.len();
+    for i in 0..n {
+        let m = red[i].len();
+        for j in 0..m {
+            let k = red[i][j].len();
+            for l in 0..k {
+                red[i][j][l] = red[i][j][l] % reducetoprime;
+            }
+        }
+    }
+    red
+}

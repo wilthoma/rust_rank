@@ -12,7 +12,7 @@ use image::{ImageBuffer, Luma};
 use std::path::Path;
 use std::time::Instant;
 use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
-use std::ops::{Add, AddAssign, Mul, Rem};
+use std::ops::{Add, Sub, AddAssign, SubAssign, Mul, Rem, MulAssign, Div, DivAssign};
 use num_traits::{One, Zero};
 use rand::distr::uniform::SampleUniform;
 use std::fmt::Display;
@@ -25,8 +25,8 @@ use std::fmt::Display;
 pub const DOT_PRODUCT_CHUNK_SIZE: usize = 100;
 
 
-pub trait GoodInteger: Display+Sum+PartialOrd + SampleUniform + SimdElement + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
-impl<T: Display+ Sum+PartialOrd + SampleUniform + SimdElement + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> GoodInteger for T {}
+pub trait GoodInteger: MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+Sum+PartialOrd + SampleUniform + SimdElement + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
+impl<T: MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+ Sum+PartialOrd + SampleUniform + SimdElement + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> GoodInteger for T {}
 
 pub trait GoodSimd : Copy
 + Send
