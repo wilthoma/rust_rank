@@ -3,6 +3,7 @@ use bubblemath::linear_recurrence::poly_mul;
 // use rayon::iter::IntoParallelIterator;
 
 use crate::ntt::{mod_add, mod_mul, ntt, NTTInteger};
+use rand::Rng;
 
 
 fn add_vects_in<T>(a : &mut Vec<T>, b : &Vec<T>, p : T) 
@@ -124,10 +125,10 @@ pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Ve
     let ntt_limit = max_power_of_two;
 
     let required_size = (deg_a + deg_b).next_power_of_two();
-    assert!( required_size < ntt_limit, "Polynomials are too large for this modulus (NTT size too big)");
+    assert!( required_size < ntt_limit, "Polynomials are too large for this modulus (NTT size too big) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
 
     // no overflow possible?
-    assert!( reducetoprime.into()*reducetoprime.into() * 2 * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible)");
+    assert!( reducetoprime.into()*reducetoprime.into() * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
 
     // multiply
     let mut red = poly_mat_mul_fft(a, b, p, root);
@@ -144,4 +145,48 @@ pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Ve
         }
     }
     red
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn generate_random_matrix(m: usize, n: usize, poly_len: usize, max_value: u64) -> Vec<Vec<Vec<u64>>> {
+        let mut rng = rand::rng();
+        (0..m)
+            .map(|_| {
+                (0..n)
+                    .map(|_| {
+                        (0..poly_len)
+                            .map(|_| rng.random_range(0..max_value))
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_poly_mat_mul_consistency() {
+        let m = 2; // Number of rows in matrix A
+        let n = 4; // Number of columns in matrix A and rows in matrix B
+        let k = 6; // Number of columns in matrix B
+        let poly_len_a = 3; // Length of polynomials in matrix A
+        let poly_len_b = 3; // Length of polynomials in matrix B
+        let max_value = 500000; // Maximum value for random coefficients
+        let p = 998244353; // A large prime modulus
+        let root = 3; // Primitive root for NTT
+
+        // Generate random input matrices
+        let a = generate_random_matrix(m, n, poly_len_a, max_value);
+        let b = generate_random_matrix(n, k, poly_len_b, max_value);
+
+        // Compute results using both methods
+        let result_bubble = poly_mat_mul_bubble(a.clone(), b.clone(), p);
+        let result_fft = poly_mat_mul_fft(&a, &b, p, root);
+
+        // Assert that the results are the same
+        assert_eq!(result_bubble, result_fft, "Results from poly_mat_mul_bubble and poly_mat_mul_fft do not match");
+    }
 }

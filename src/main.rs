@@ -15,9 +15,11 @@ mod ntt;
 mod sigma_basis;
 // mod upoly;
 mod poly_mat_mul;
+mod modular_linalg;
 use nalgebra::DMatrix;
 use polynomial::{poly_matrix_determinant, top_invariant_factor, top_invariant_factor_fast, vec_matrix_to_poly_matrix3};
 use bubblemath::linear_recurrence::berlekamp_massey;
+use sigma_basis::{analyze_pm_basis, PM_Basis};
 // use invariant_factor::{top_invariant_factor, vecvec_to_symmetric_poly_matrix, vec_matrix_to_poly_matrix};
 use vectorstream::*;
 use blockbmtest::{analyze_min_generators, is_generating_poly, matrix_berlekamp_massey, test_matrix_berlekamp_massey_simple2, vecvec_to_symmetric_matrix_list};
@@ -522,6 +524,11 @@ fn main() {
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
     // println!("{:?}", bmres);
 
+    let largeprime : u128 = 9223372036737335297;  // Prime modulus
+    let root: u128 = 3;     // Primitive root of unity modulo P
+    let thed =v[0].len() *2 / num_v + 10; 
+    let (pmb, del) = PM_Basis(&seq, thed, prime, largeprime, root);
+    analyze_pm_basis(&pmb, &del, prime as u128);
 
 
     // let delta = v[0].len() *2; // seq[0].len()-2;

@@ -7,9 +7,10 @@ use num_traits::{One, Zero};
 use rand::distr::uniform::SampleUniform;
 use std::fmt::Display;
 use std::iter::Sum;
+use rand::Rng;
 
-pub trait NTTInteger: Into<u128> + From<u64>+ MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
-impl<T: Into<u128> + From<u64>+MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+ Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> NTTInteger for T {}
+pub trait NTTInteger: Into<u128> + From<u32>+ MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
+impl<T: Into<u128> + From<u32>+MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+ Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> NTTInteger for T {}
 
 
 #[inline(always)]
@@ -76,14 +77,14 @@ pub fn ntt<T : NTTInteger>(a: &mut [T], invert: bool, p : T, root : T) {
     }
 
     let root = if invert {
-        mod_pow(root, p - T::one() - (p - T::one()) / (T::from(n as u64)),p)
+        mod_pow(root, p - T::one() - (p - T::one()) / (T::from(n as u32)),p)
     } else {
-        mod_pow(root, (p - T::one()) / (T::from(n as u64)),p)
+        mod_pow(root, (p - T::one()) / (T::from(n as u32)),p)
     };
 
     let mut len = 2;
     while len <= n {
-        let wlen = mod_pow(root, T::from((n / len) as u64),p);
+        let wlen = mod_pow(root, T::from((n / len) as u32),p);
 
         // Parallel over blocks
         a.par_chunks_mut(len).for_each(|chunk| {
@@ -102,7 +103,7 @@ pub fn ntt<T : NTTInteger>(a: &mut [T], invert: bool, p : T, root : T) {
     }
 
     if invert {
-        let n_inv = mod_pow(T::from(n as u64), p - two, p);
+        let n_inv = mod_pow(T::from(n as u32), p - two, p);
         a.par_iter_mut().for_each(|x| {
             *x = mod_mul(*x, n_inv, p);
         });
@@ -137,6 +138,7 @@ fn simd_mod_mul(a: u64x4, b: u64x4, MOD:u64) -> u64x4 {
 }
 
 pub fn ntt_simd(a: &mut [u64], invert: bool, p:u64, root:u64) {
+    assert!(false, "SIMD NTT is not correctly implemented yet");
     let MOD = p;
     let ROOT = root;
     let n = a.len();
@@ -205,4 +207,56 @@ pub fn ntt_simd(a: &mut [u64], invert: bool, p:u64, root:u64) {
             *x = mod_mul(*x, n_inv, MOD);
         });
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn generate_random_data(len: usize, p: u64) -> Vec<u64> {
+        let mut rng = rand::rng();
+        (0..len).map(|_| rng.random_range(0..p)).collect()
+    }
+
+    #[test]
+    fn test_ntt_inverse() {
+        let p = 998244353; // A prime modulus
+        let root = 3; // A primitive root modulo p
+        let len = 16; // Must be a power of two
+        let mut data = generate_random_data(len, p);
+
+        let original_data = data.clone();
+        ntt(&mut data, false, p, root); // Forward NTT
+        ntt(&mut data, true, p, root); // Inverse NTT
+
+        assert_eq!(data, original_data, "NTT followed by inverse NTT should return the original data");
+    }
+
+    // #[test]
+    // fn test_ntt_simd_inverse() {
+    //     let p = 998244353; // A prime modulus
+    //     let root = 3; // A primitive root modulo p
+    //     let len = 16; // Must be a power of two
+    //     let mut data = generate_random_data(len, p);
+
+    //     let original_data = data.clone();
+    //     ntt_simd(&mut data, false, p, root); // Forward NTT (SIMD)
+    //     ntt_simd(&mut data, true, p, root); // Inverse NTT (SIMD)
+
+    //     assert_eq!(data, original_data, "NTT_SIMD followed by inverse NTT_SIMD should return the original data");
+    // }
+
+    // #[test]
+    // fn test_ntt_vs_ntt_simd() {
+    //     let p = 998244353; // A prime modulus
+    //     let root = 3; // A primitive root modulo p
+    //     let len = 16; // Must be a power of two
+    //     let mut data1 = generate_random_data(len, p);
+    //     let mut data2 = data1.clone();
+
+    //     ntt(&mut data1, false, p, root); // Forward NTT
+    //     ntt_simd(&mut data2, false, p, root); // Forward NTT (SIMD)
+
+    //     assert_eq!(data1, data2, "Results of NTT and NTT_SIMD should agree");
+    // }
 }

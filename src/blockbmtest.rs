@@ -4,7 +4,7 @@
 use nalgebra::DMatrix;
 use petgraph::algo::k_shortest_path;
 
-use crate::{invariant_factor::{top_invariant_factor, vec_matrix_to_poly_matrix}, matrices::GoodInteger};
+use crate::{invariant_factor::{top_invariant_factor, vec_matrix_to_poly_matrix}, matrices::GoodInteger, ntt::{NTTInteger, modinv as modinv2}};
 // use std::ops::{Add, Mul, Sub};
 
 type Matrix<T> = DMatrix<T>;
