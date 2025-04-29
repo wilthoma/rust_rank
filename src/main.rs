@@ -526,7 +526,7 @@ fn main() {
 
     let largeprime : u128 = 9223372036737335297;  // Prime modulus
     let root: u128 = 3;     // Primitive root of unity modulo P
-    let thed =v[0].len() *2 / (num_v * num_v) + 1000; 
+    let thed =v[0].len() *2 / (num_v * num_v) + 3000; 
     let (pmb, del) = PM_Basis(&seq, thed, prime, largeprime, root);
     analyze_pm_basis(&pmb, &del, prime as u128);
 

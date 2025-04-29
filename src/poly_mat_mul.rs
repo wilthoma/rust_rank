@@ -4,6 +4,7 @@ use bubblemath::linear_recurrence::poly_mul;
 
 use crate::ntt::{matrix_ntt_parallel, mod_add, mod_mul, ntt, NTTInteger};
 use rand::Rng;
+use std::cmp::min;
 
 
 fn add_vects_in<T>(a : &mut Vec<T>, b : &Vec<T>, p : T) 
@@ -39,14 +40,14 @@ pub fn poly_mat_mul_bubble(a: Vec<Vec<Vec<u64>>>, b: Vec<Vec<Vec<u64>>>, p: u64)
 }
 
 
-pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T) -> Vec<Vec<Vec<T>>> {
+pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, max_b_deg : usize) -> Vec<Vec<Vec<T>>> {
     let m = a.len();
     let n = a[0].len();
     let k = b[0].len();
     assert_eq!(n, b.len(), "Matrix dimensions do not match for multiplication");
 
     let nlena = a[0][0].len();
-    let nlenb = b[0][0].len();
+    let nlenb = min(b[0][0].len(), max_b_deg);
     let nlenres = nlena + nlenb - 1;
 
 
@@ -115,12 +116,13 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
 
 /// Multiplies two matrices of polynomials using FFT and reduces the result modulo a prime.
 /// p should be a large prime relative to reducetoprime and the sequence size so that no overflow can occur.
-pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T) -> Vec<Vec<Vec<T>>> {
+/// max_b_degree allows to restrict the coefficients of b to be considered to that length, even if the buffer is larger
+pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, max_b_deg : usize) -> Vec<Vec<Vec<T>>> {
     // check whether prime is large enough for NTT
     let mut max_power_of_two = 1;
     let mut k = 0;
     let deg_a = a[0][0].len();
-    let deg_b = b[0][0].len();
+    let deg_b = min(max_b_deg, b[0][0].len());
     while (p.into() - 1) % (2 * max_power_of_two as u128 ) == 0 {
         max_power_of_two *= 2;
         k += 1;
@@ -134,7 +136,7 @@ pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Ve
     assert!( reducetoprime.into()*reducetoprime.into() * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
 
     // multiply
-    let mut red = poly_mat_mul_fft(a, b, p, root);
+    let mut red = poly_mat_mul_fft(a, b, p, root, max_b_deg);
 
     // reduce mod smaller prime
     let n = red.len();
