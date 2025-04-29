@@ -25,6 +25,8 @@ pub fn PM_Basis<T: GoodInteger+Into<u128> >(seq : &Vec<Vec<T>>, d:usize, seqprim
     }
     let d = dd;
 
+    assert!(d*n<nlen, "Sequence too short to reach order nd={}, d={}, n={}, nlen={}", n*d,d, n, nlen);
+
     // prepare input data. Also add a unit matrix of size nxn below the matrix
     let mut G = vec![vec![vec![0; nlen]; n]; 2*n];
     let mut ii = 0;
@@ -157,9 +159,18 @@ fn _PM_Basis(G : &Vec<Vec<Vec<u128>>>, d: usize, delta : &Vec<i128>, seqprime : 
         M_Basis(G, delta, seqprime)
     } else {
         let (MM, mumu) = _PM_Basis(G, d/2, delta, seqprime, largeprime, root);
-        let mut GG = poly_mat_mul_fft_red(&MM,&G, largeprime, root, seqprime);
+
+        let start_time = std::time::Instant::now();
+        println!("startntt...");
+        let mut GG = poly_mat_mul_fft_red(&MM, &G, largeprime, root, seqprime);
+        let elapsed_time = start_time.elapsed();
+        println!("Time taken for poly_mat_mul_fft_red: {:?}", elapsed_time);
+
         shift_trunc_in(&mut GG, d/2);
+        println!("startntt...");
         let (MMM, mumumu) = _PM_Basis(&GG, d/2, &mumu, seqprime, largeprime, root);
+        let elapsed_time = start_time.elapsed();
+        println!("Time taken for poly_mat_mul_fft_red: {:?}", elapsed_time);
         (poly_mat_mul_fft_red(&MMM ,&MM, largeprime, root, seqprime), mumumu)
     }
 }

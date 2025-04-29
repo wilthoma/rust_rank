@@ -2,7 +2,7 @@ use bubblemath::linear_recurrence::poly_mul;
 // use num_traits::Zero;
 // use rayon::iter::IntoParallelIterator;
 
-use crate::ntt::{mod_add, mod_mul, ntt, NTTInteger};
+use crate::ntt::{matrix_ntt_parallel, mod_add, mod_mul, ntt, NTTInteger};
 use rand::Rng;
 
 
@@ -76,16 +76,18 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
         }
     }
     // compute ffts
-    for i in 0..m {
-        for j in 0..n {
-            ntt(&mut fa[i][j], false, p, root);
-        }
-    }
-    for i in 0..n {
-        for j in 0..k {
-            ntt(&mut fb[i][j], false, p, root);
-        }
-    }
+    matrix_ntt_parallel(&mut fa, false, p, root);
+    // for i in 0..m {
+    //     for j in 0..n {
+    //         ntt(&mut fa[i][j], false, p, root);
+    //     }
+    // }
+    matrix_ntt_parallel(&mut fb, false, p, root);
+    // for i in 0..n {
+    //     for j in 0..k {
+    //         ntt(&mut fb[i][j], false, p, root);
+    //     }
+    // }
 
     // multiply matrices
     for i in 0..m {
@@ -99,9 +101,10 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
     }
 
     // compute iffts qnd resize result
+    matrix_ntt_parallel(&mut fresult, true, p, root);
     for i in 0..m {
         for j in 0..k {
-            ntt(&mut fresult[i][j], true, p, root);
+            // ntt(&mut fresult[i][j], true, p, root);
             fresult[i][j].resize(nlenres, T::zero());
         }
     }

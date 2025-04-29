@@ -6,7 +6,7 @@ use std::{fmt::Debug, ops::{Add, Mul}, vec};
 
 /// Computes the modular inverse of a matrix modulo `p`.
 /// Panics if the matrix is not invertible.
-pub fn matrix_inverse(mat: &DMatrix<u128>, p: u128) -> DMatrix<u128> {
+pub fn matrix_inverse<T: NTTInteger>(mat: &DMatrix<T>, p: T) -> DMatrix<T> {
     let mat = mat.clone();
     let n = mat.nrows();
     assert_eq!(n, mat.ncols(), "Matrix must be square");
@@ -17,17 +17,17 @@ pub fn matrix_inverse(mat: &DMatrix<u128>, p: u128) -> DMatrix<u128> {
         for j in 0..n {
             aug[(i, j)] = mat[(i, j)] % p;
         }
-        aug[(i, n + i)] = 1;
+        aug[(i, n + i)] = T::one();
     }
 
     // Perform Gaussian elimination
     for i in 0..n {
         // Find pivot
-        if aug[(i, i)] == 0 {
+        if aug[(i, i)] == T::zero() {
             // Try to swap with a lower row
             let mut found = false;
             for j in (i + 1)..n {
-                if aug[(j, i)] != 0 {
+                if aug[(j, i)] != T::zero() {
                     aug.swap_rows(i, j);
                     found = true;
                     break;

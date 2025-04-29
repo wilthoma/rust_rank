@@ -5,12 +5,12 @@ use std::simd::prelude::{SimdPartialOrd, SimdUint};
 use std::ops::{Add, Sub, AddAssign, SubAssign, Mul, Rem, MulAssign, Div, DivAssign};
 use num_traits::{One, Zero};
 use rand::distr::uniform::SampleUniform;
-use std::fmt::Display;
+use std::fmt::{Display, Debug};
 use std::iter::Sum;
 use rand::Rng;
 
-pub trait NTTInteger: Into<u128> + From<u32>+ MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
-impl<T: Into<u128> + From<u32>+MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+ Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> NTTInteger for T {}
+pub trait NTTInteger: Debug+Into<u128> + From<u32>+ MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
+impl<T: Debug+Into<u128> + From<u32>+MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+ Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> NTTInteger for T {}
 
 
 #[inline(always)]
@@ -86,6 +86,54 @@ pub fn ntt<T : NTTInteger>(a: &mut [T], invert: bool, p : T, root : T) {
     while len <= n {
         let wlen = mod_pow(root, T::from((n / len) as u32),p);
 
+        a.chunks_mut(len).for_each(|chunk| {
+            let mut w = T::one();
+            let (left, right) = chunk.split_at_mut(len/2);
+            for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+                let u = *l;
+                let v = mod_mul(*r, w, p);
+                *l = mod_add(u, v, p);
+                *r = mod_sub(u, v, p);
+                w = mod_mul(w, wlen, p);
+            }
+        });
+
+        len <<= 1;
+    }
+
+    if invert {
+        let n_inv = mod_pow(T::from(n as u32), p - two, p);
+        a.iter_mut().for_each(|x| {
+            *x = mod_mul(*x, n_inv, p);
+        });
+    }
+}
+
+
+pub fn ntt_par<T : NTTInteger>(a: &mut [T], invert: bool, p : T, root : T) {
+    let n = a.len();
+    let bits = n.trailing_zeros() as usize;
+    assert_eq!(n, 1 << bits, "Length of input array must be a power of 2");
+    let two = T::one() + T::one();
+
+    // Bit reversal permutation
+    for i in 0..n {
+        let j = bit_reverse(i, bits);
+        if i < j {
+            a.swap(i, j);
+        }
+    }
+
+    let root = if invert {
+        mod_pow(root, p - T::one() - (p - T::one()) / (T::from(n as u32)),p)
+    } else {
+        mod_pow(root, (p - T::one()) / (T::from(n as u32)),p)
+    };
+
+    let mut len = 2;
+    while len <= n {
+        let wlen = mod_pow(root, T::from((n / len) as u32),p);
+
         // Parallel over blocks
         a.par_chunks_mut(len).for_each(|chunk| {
             let mut w = T::one();
@@ -110,6 +158,14 @@ pub fn ntt<T : NTTInteger>(a: &mut [T], invert: bool, p : T, root : T) {
     }
 }
 
+
+pub fn matrix_ntt_parallel<T:NTTInteger>(a: &mut Vec<Vec<Vec<T>>>, invert: bool, p : T, root : T) {
+    // apply ntt to all elements in parallel
+
+    a.par_iter_mut().flat_map(|row| row.par_iter_mut()).for_each(|x| {
+        ntt(x, invert, p, root);
+    });
+}
 
 
 /// Modular addition for SIMD vectors
