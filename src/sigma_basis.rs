@@ -130,8 +130,9 @@ fn shift_trunc_in(mat : &mut Vec<Vec<Vec<u128>>>, shiftd: usize) {
 
 
 pub fn M_Basis(G : &Vec<Vec<Vec<u128>>>, delta : &Vec<usize>, prime : u128) -> (Vec<Vec<Vec<u128>>>, Vec<usize>) {
-    let n = G.len();
-    assert_eq!(G[0].len(), n, "Matrix G must be square");
+    let m = G.len();
+    let n = G[0].len();
+    assert!(m>=n, "Must have #rows >= #cols");
     let mut delta = delta.clone(); 
 
 
@@ -153,6 +154,12 @@ pub fn M_Basis(G : &Vec<Vec<Vec<u128>>>, delta : &Vec<usize>, prime : u128) -> (
     // let Delta0 = Gk_inv * M * (G[k-1].clone());
     let mut Delta = DMatrix::from_fn(n,n,|i,j| G[i][j][0]);
     Delta = &pi_m * &Delta;
+    let mut Delta_aug = DMatrix::zeros(m,m);
+    for i in 0..m {
+        for j in 0..n {
+            Delta_aug[(i,j)] = Delta[(i,j)];
+        }
+    }
     
     let (L,S,P) = lsp_decomposition(Delta, prime);
     let Linv = matrix_inverse(L, prime);
