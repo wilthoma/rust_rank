@@ -198,6 +198,31 @@ pub fn M_Basis(G : &Vec<Vec<Vec<u128>>>, delta : &Vec<usize>, prime : u128) -> (
 }
 
 
+fn modinv2(a: u128, p: u128) -> u128 {
+    assert!(a != 0, "attempted to invert zero");
+    let mut t = 0i128;
+    let mut new_t = 1i128;
+    let mut r = p as i128;
+    let mut new_r = a as i128;
+
+    while new_r != 0 {
+        let quotient = r / new_r;
+        t = t - quotient * new_t;
+        std::mem::swap(&mut t, &mut new_t);
+        r = r - quotient * new_r;
+        std::mem::swap(&mut r, &mut new_r);
+    }
+
+    if r > 1 {
+        panic!("modular inverse does not exist");
+    }
+    if t < 0 {
+        t += p as i128;
+    }
+
+    t as u128
+}
+
 /// Computes the LSP decomposition of a matrix modulo p.
 /// LSP decomposition: A = L * S * P (mod p)
 pub fn lsp_decomposition(mut a: DMatrix<u128>, p: u128) -> (DMatrix<u128>, DMatrix<u128>, DMatrix<u128>) {
@@ -221,15 +246,15 @@ pub fn lsp_decomposition(mut a: DMatrix<u128>, p: u128) -> (DMatrix<u128>, DMatr
 
         if let Some(j) = pivot_col {
             // Swap columns k <-> j in A and perm
-            a.swap_columns(k, j);
-            perm.swap(k, j);
+            a.swap_columns(rank, j);
+            perm.swap(rank, j);
 
             // Eliminate below
-            let pivot_inv = modinv(a[(k, k)], p);
+            let pivot_inv = modinv2(a[(k, rank)], p);
             for i in (k + 1)..m {
-                let factor = (a[(i, k)] * pivot_inv) % p;
-                l[(i, k)] = factor;
-                for col in k..m {
+                let factor = (a[(i, rank)] * pivot_inv) % p;
+                l[(i, k)] = (p-factor)%p;
+                for col in rank..m {
                     let sub = (factor * a[(k, col)]) % p;
                     a[(i, col)] = (a[(i, col)] + p - sub) % p;
                 }
@@ -237,11 +262,13 @@ pub fn lsp_decomposition(mut a: DMatrix<u128>, p: u128) -> (DMatrix<u128>, DMatr
 
             rank += 1;
         }
+        println!{"{}: {}",k,a};
     }
 
     // Build the permutation matrix P
     let mut pmat = DMatrix::<u128>::zeros(m, m);
     for (i, &j) in perm.iter().enumerate() {
+        // pmat[(i, j)] = 1;
         pmat[(j, i)] = 1;
     }
 
@@ -398,6 +425,8 @@ mod tests {
 
     fn check_lsp(a: DMatrix<u128>, p: u128) {
         let (l, s, pmat) = lsp_decomposition(a.clone(), p);
+
+        println!("{} {} {} {}", a,l,s,pmat);
 
         let reconstructed = (l.clone() * s.clone() * pmat.clone()).map(|x| x % p);
         let original_modp = a.map(|x| x % p);
