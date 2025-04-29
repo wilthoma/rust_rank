@@ -199,46 +199,53 @@ pub fn M_Basis(G : &Vec<Vec<Vec<u128>>>, delta : &Vec<usize>, prime : u128) -> (
 
 
 /// Computes the LSP decomposition of a matrix modulo p.
-/// Returns (L, S, P) such that A = L * S * P
+/// LSP decomposition: A = L * S * P (mod p)
 pub fn lsp_decomposition(mut a: DMatrix<u128>, p: u128) -> (DMatrix<u128>, DMatrix<u128>, DMatrix<u128>) {
     let m = a.nrows();
     assert_eq!(m, a.ncols(), "Matrix must be square");
 
     let mut l = DMatrix::<u128>::identity(m, m);
-    let mut pmat = DMatrix::<u128>::identity(m, m);
+    let mut perm = (0..m).collect::<Vec<usize>>();
+
+    let mut rank = 0;
 
     for k in 0..m {
-        // Find pivot row
-        let mut pivot_row = None;
-        for i in k..m {
-            if a[(i, k)] % p != 0 {
-                pivot_row = Some(i);
+        // Find pivot in row k (column-wise search)
+        let mut pivot_col = None;
+        for j in k..m {
+            if a[(k, j)] % p != 0 {
+                pivot_col = Some(j);
                 break;
             }
         }
 
-        if let Some(pivot) = pivot_row {
-            if pivot != k {
-                a.swap_rows(k, pivot);
-                l.swap_rows(k, pivot);
-                pmat.swap_rows(k, pivot);
-            }
+        if let Some(j) = pivot_col {
+            // Swap columns k <-> j in A and perm
+            a.swap_columns(k, j);
+            perm.swap(k, j);
 
-            // Now eliminate below pivot
+            // Eliminate below
             let pivot_inv = modinv(a[(k, k)], p);
             for i in (k + 1)..m {
                 let factor = (a[(i, k)] * pivot_inv) % p;
                 l[(i, k)] = factor;
-                for j in k..m {
-                    let sub = (factor * a[(k, j)]) % p;
-                    a[(i, j)] = (a[(i, j)] + p - sub) % p;
+                for col in k..m {
+                    let sub = (factor * a[(k, col)]) % p;
+                    a[(i, col)] = (a[(i, col)] + p - sub) % p;
                 }
             }
+
+            rank += 1;
         }
-        // else: no pivot, column stays zero (handled automatically)
     }
 
-    // Now, a contains S (almost): bottom zero rows are fine.
+    // Build the permutation matrix P
+    let mut pmat = DMatrix::<u128>::zeros(m, m);
+    for (i, &j) in perm.iter().enumerate() {
+        pmat[(j, i)] = 1;
+    }
+
+    // Final modular reduction
     let s = a.map(|x| x % p);
 
     (l, s, pmat)
@@ -326,4 +333,101 @@ pub fn matrix_inverse(mut mat: DMatrix<u128>, p: u128) -> DMatrix<u128> {
     }
 
     inv_mat
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nalgebra::DMatrix;
+
+    fn is_unit_lower_triangular(l: &DMatrix<u128>, p: u128) -> bool {
+        let n = l.nrows();
+        for i in 0..n {
+            for j in 0..n {
+                let val = l[(i, j)] % p;
+                if i == j && val != 1 {
+                    return false;
+                } else if i < j && val != 0 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn is_valid_s_matrix(s: &DMatrix<u128>, p: u128) -> bool {
+        let m = s.nrows();
+
+        // Count nonzero rows from the top
+        let mut rank = 0;
+        for i in 0..m {
+            // check that all entries to the left are zero
+            for j in 0..rank {
+                if s[(i,j)] % p != 0 {
+                    return false;
+                }
+            } 
+            if s.row(i).iter().any(|&x| x % p != 0) {
+                rank += 1;
+            }
+        }
+
+        // Check upper triangular and nonzero diagonal in nonzero rows
+        for i in 0..rank {
+            if s[(i, i)] % p == 0 {
+                return false;
+            }
+            for j in 0..i {
+                if s[(i, j)] % p != 0 {
+                    return false;
+                }
+            }
+        }
+
+        // Remaining rows must be all zero
+        for i in rank..m {
+            if s.row(i).iter().any(|&x| x % p != 0) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn check_lsp(a: DMatrix<u128>, p: u128) {
+        let (l, s, pmat) = lsp_decomposition(a.clone(), p);
+
+        let reconstructed = (l.clone() * s.clone() * pmat.clone()).map(|x| x % p);
+        let original_modp = a.map(|x| x % p);
+
+        assert_eq!(original_modp, reconstructed, "Reconstructed matrix does not match original");
+        assert!(is_unit_lower_triangular(&l, p), "L is not unit lower triangular");
+        assert!(is_valid_s_matrix(&s, p), "S matrix is not in expected form");
+    }
+
+    #[test]
+    fn test_lsp_decomposition_small() {
+        let p = 101;
+        let a = DMatrix::<u128>::from_row_slice(3, 3, &[
+            2, 4, 6,
+            1, 3, 5,
+            0, 0, 1,
+        ]);
+        check_lsp(a, p);
+    }
+
+    #[test]
+    fn test_lsp_decomposition_larger() {
+        let p = 97;
+        let a = DMatrix::<u128>::from_row_slice(5, 5, &[
+            10, 20, 30, 40, 50,
+             5, 10, 15, 20, 25,
+             0,  1,  0,  1,  0,
+             1,  0,  1,  0,  1,
+            99, 99, 99, 99, 99, // mod 97 => 2
+        ]);
+        check_lsp(a, p);
+    }
 }
