@@ -84,14 +84,14 @@ pub fn analyze_pm_basis(basis : &Vec<Vec<Vec<u128>>>, delta : &Vec<i128>, p:u128
     let nlen = basis[0][0].len();
 
     println!("Analyzing min generators ... {} found of max degree {}", n, nlen);
-    println!("Matrix ranks by degree...");
-    for i in 0..nlen {
-        println!("{}: {}", i, modular_rank(&mat_coeff(&basis, i), p));
-    }
-    println!("Matrix determinants by degree...");
-    for i in 0..nlen {
-        println!("{}: {}", i, modular_determinant(&mat_coeff(&basis, i), p));
-    }
+    // println!("Matrix ranks by degree...");
+    // for i in 0..nlen {
+    //     println!("{}: {}", i, modular_rank(&mat_coeff(&basis, i), p));
+    // }
+    // println!("Matrix determinants by degree...");
+    // for i in 0..nlen {
+    //     println!("{}: {}", i, modular_determinant(&mat_coeff(&basis, i), p));
+    // }
     println!("Individual generator degrees...");
     for j in 0..n {
         // the j-th generator is the j-th row

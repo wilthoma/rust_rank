@@ -573,14 +573,14 @@ pub fn analyze_min_generators(poly : &Vec<Matrix<i64>>, p:i64)
     let n = poly[0].nrows();
     let k = poly.len();
     println!("Analyzing min generators ... {} found of max degree {}", poly[0].ncols(), poly.len());
-    println!("Matrix ranks by degree...");
-    for i in 0..poly.len() {
-        println!("{}: {}", i, modular_rank(&poly[i], p));
-    }
-    println!("Matrix determinants by degree...");
-    for i in 0..poly.len() {
-        println!("{}: {}", i, modular_determinant(&poly[i], p));
-    }
+    // println!("Matrix ranks by degree...");
+    // for i in 0..poly.len() {
+    //     println!("{}: {}", i, modular_rank(&poly[i], p));
+    // }
+    // println!("Matrix determinants by degree...");
+    // for i in 0..poly.len() {
+    //     println!("{}: {}", i, modular_determinant(&poly[i], p));
+    // }
     println!("Individual generator degrees...");
     for j in 0..poly[0].ncols() {
         let mut deg = 0;
