@@ -25,7 +25,7 @@ impl KaraMultiply for u128 {
     }
 }
 
-
+#[inline(always)]
 fn add_vects_in<T>(a : &mut Vec<T>, b : &Vec<T>, p : T) 
 where T : NTTInteger {
     assert_eq!(a.len(), b.len(), "Vectors must be of the same length");
@@ -65,13 +65,13 @@ pub fn poly_mat_mul_bubble_red<T:NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, 
     assert_eq!(n, b.len(), "Matrix dimensions do not match for multiplication");
 
     let nlena = a[0][0].len();
-    let nlenb = min(b[0][0].len(), max_b_deg);
+    let nlenb = min(b[0][0].len(), max_b_deg+1);
     let nlenres = nlena + nlenb - 1;
     let mut result = vec![vec![vec![T::zero(); nlenres]; k]; m];
     for i in 0..m {
         for j in 0..k {
             for l in 0..n {
-                add_vects_in(&mut result[i][j], &KaraMultiply::poly_mul(&a[i][l], &b[l][j], p), p);
+                add_vects_in(&mut result[i][j], &KaraMultiply::poly_mul(&a[i][l], &b[l][j][0..nlenb], p), p);
             }
         }
     }
