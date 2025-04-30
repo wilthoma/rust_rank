@@ -211,7 +211,40 @@ pub fn main_loop_s_mt2<T:GoodInteger, S:VectorStream<T>>(
 }
 
 
-
+fn run_benchmark(filename : &str, transpose : bool)
+{   
+    println!("Running benchmark...");
+    println!("Loading matrix from file {}...", filename);
+    let start_time = std::time::Instant::now();
+    let mut a = CsrMatrix::<u64>::load_csr_matrix_from_sms(filename, THEPRIME).expect("Failed to load matrix");
+    if transpose {
+        a = a.transpose();
+    }
+    println!("Loaded matrix with {} rows and {} columns in {:?}.", a.n_rows, a.n_cols, start_time.elapsed());
+    println!("Running benchmark u64...");
+    a.normal_simd_speedtest( THESMALLPRIME as u64, 3);
+    a.normal_simd_speedtest_serial( THESMALLPRIME as u64, 3);
+    println!("Running benchmark u32...");
+    let aa : CsrMatrix<u32> = a.tou32();
+    aa.normal_simd_speedtest( THESMALLPRIME, 3);
+    aa.normal_simd_speedtest_serial( THESMALLPRIME, 3);
+    println!("Running benchmark u16...");
+    let aaa : CsrMatrix<u16> = a.tou16();
+    aaa.normal_simd_speedtest( THETINYPRIME, 3);
+    aaa.normal_simd_speedtest_serial( THETINYPRIME, 3);
+    let at = a.transpose().tou64();
+    println!("Running benchmark u64 (transpose)...");
+    at.normal_simd_speedtest( THESMALLPRIME as u64, 3);
+    at.normal_simd_speedtest_serial( THESMALLPRIME as u64, 3);
+    println!("Running benchmark u32 (transpose)...");
+    let aat : CsrMatrix<u32> = at.tou32();
+    aat.normal_simd_speedtest( THESMALLPRIME, 3);
+    aat.normal_simd_speedtest_serial( THESMALLPRIME, 3);
+    println!("Running benchmark u16 (transpose)...");
+    let aaat : CsrMatrix<u16> = at.tou16();
+    aaat.normal_simd_speedtest( THETINYPRIME, 3);
+    aaat.normal_simd_speedtest_serial( THETINYPRIME, 3);
+}
 
 fn main() {
     let matches = Command::new("Wiedemann sequence and rank computation")
@@ -342,6 +375,7 @@ fn main() {
     let num_v = num_workers * lanes;
 
     let mut prime = pprime as MyInt;
+    let wdm_filename = if transpose_matrix {format!("{}_t.wdm", filename) } else {format!("{}.wdm", filename)}; 
 
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
@@ -350,54 +384,74 @@ fn main() {
             .expect("Failed to create thread pool");
     }
 
+    if benchmark {
+        run_benchmark(filename, transpose_matrix);
+        std::process::exit(0);
+    }
 
-    // load the matrix file -- TODO: matrix loading must be moved after the wdm loading since the prime number is needed for matrix loading
+    // preconditioners for the matrix
+    let mut row_precond: Vec<MyInt> = vec![];
+    let mut col_precond: Vec<MyInt> = vec![];
+    // let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
+    // let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
+
+    // the initial vector A^kv_0
+    let mut v: Vec<Vec<MyInt>> = vec![];
+    // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
+    // v[0][0]=2;
+    // the current vector A^kv_0
+    let mut curv: Vec<Vec<MyInt>> = vec![];
+    // the sequence of dot products
+    let mut seq: Vec<Vec<MyInt>> = vec![];
+    let mut initialized = false;
+    let mut tm : usize = 0;
+    let mut tn : usize = 0;
+
+    if std::path::Path::new(&wdm_filename).exists() && !overwrite {
+        println!("Loading state from file {}...", &wdm_filename);
+        let (tprime, ttm, ttn, tnum_v) = load_wdm_file_sym(&wdm_filename, &mut row_precond, &mut col_precond, &mut v, &mut curv, &mut seq).unwrap();
+        prime = tprime as MyInt;
+        tm = ttm;
+        tn = ttn;
+
+        // num_u = tnum_u;
+        if tnum_v != num_v {
+            println!("Number of workers * lanes does not match the size of V in the saved file! {} vs {}. Exiting.", tnum_v, num_v);
+            std::process::exit(1);
+        }
+        println!("Loaded state from file {} with {} entries. Note: parameteer in wdm file take precedence over those passed via command line,", &wdm_filename, seq[0].len());
+        initialized = true;
+    }
+
+    // load the matrix file
+    println!("Loading matrix from file {}...", filename);
     let start_time = std::time::Instant::now();
     let mut a:CsrMatrix<MyInt> = CsrMatrix::load_csr_matrix_from_sms(filename, prime as u32).expect("Failed to load matrix");
     if transpose_matrix {
         a = a.transpose();
     }
-    // let a = std::sync::Arc::new(load_csr_matrix_from_sms(filename).expect("Failed to load matrix"));
     // let mut a = reorder_matrix(&a, "data/gra12_9.g6", "data/gra11_9.g6");
-    let duration = start_time.elapsed();
-    println!("Time taken to load matrix: {:?}", duration);
-    println!("Loaded matrix with {} rows and {} columns", a.n_rows, a.n_cols);
+    println!("Loaded matrix with {} rows and {} columns in {:?}.", a.n_rows, a.n_cols, start_time.elapsed());
 
-    let mut row_precond: Vec<MyInt> = create_random_vector_nozero(a.n_rows, prime);
-    let mut col_precond: Vec<MyInt> = create_random_vector_nozero(a.n_cols, prime);
-    // let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
-    // let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
-
-    let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
-    // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
-    // v[0][0]=2;
-    let mut curv: Vec<Vec<MyInt>> = v.clone();
-    let mut seq: Vec<Vec<MyInt>> = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
-
-    let wdm_filename = if transpose_matrix {format!("{}_t.wdm", filename) } else {format!("{}.wdm", filename)}; 
-    // check if exists
-    if std::path::Path::new(&wdm_filename).exists() && !overwrite {
-        println!("Loading state from file {}...", &wdm_filename);
-        let (tprime, tm, tn, tnum_v) = load_wdm_file_sym(&wdm_filename, &mut row_precond, &mut col_precond, &mut v, &mut curv, &mut seq).unwrap();
-        prime = tprime as MyInt;
-        if tm != a.n_rows || tn != a.n_cols {
-            println!("Matrix dimensions do not match! {}x{} vs {}x{}", tm, tn, a.n_rows, a.n_cols);
-            std::process::exit(1);
-        }
-        // num_u = tnum_u;
-        if tnum_v != num_v {
-            println!("Number of workers * lanes does not match the size of V in the saved file! {} vs {}", tnum_v, num_v);
-            std::process::exit(1);
-        }
-        println!("Loaded state from file {} with {} entries. Note: parameteer in wdm file take precedence over those passed via command line,", &wdm_filename, seq[0].len());
-    } else {
-
+    // check if matix dimensions match those of the wdm file
+    if initialized && (tm != a.n_rows || tn != a.n_cols) {
+        println!("Matrix dimensions do not match! {}x{} vs {}x{}", tm, tn, a.n_rows, a.n_cols);
+        std::process::exit(1);
     }
-    // compute desired sequence length if none was provided
-    if max_nlen <=0 {
-        let d = min(a.n_cols, a.n_rows) as f32;
-        max_nlen = (2.0 * d/(num_v as f32) + 4.0).floor() as usize; // 2* min(a.n_cols, a.n_rows);
+
+    if !initialized {
+        row_precond = create_random_vector_nozero(a.n_rows, prime);
+        col_precond = create_random_vector_nozero(a.n_cols, prime);
+        // let mut col_precond: Vec<MyInt> = (0..a.n_cols).map(|_| 1).collect();
+        // let mut row_precond: Vec<MyInt> = (0..a.n_rows).map(|_| 2).collect();
+
+        v = (0..num_v).map(|_| create_random_vector(a.n_cols, prime)).collect();
+        // let mut v: Vec<Vec<MyInt>> = (0..num_v).map(|_| (0..a.n_cols).map(|_| 1).collect() ).collect();
+        // v[0][0]=2;
+        curv = v.clone();
+        seq  = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
     }
+
 
     // check prime validity -- i.e., if with our custom simplifications we might run into overflows
     let (max_row_nnz, max_col_nnz) = a.max_nnzs();
@@ -417,39 +471,17 @@ fn main() {
     // println!("Gaussian elimination...");
     // AA.gaussian_elimination_markowitz(prime);
 
-    if benchmark
-    {   
-        let a = a.tou64();
-        println!("Running benchmark u64...");
-        a.normal_simd_speedtest( THESMALLPRIME as u64, 3);
-        a.normal_simd_speedtest_serial( THESMALLPRIME as u64, 3);
-        println!("Running benchmark u32...");
-        let aa : CsrMatrix<u32> = a.tou32();
-        aa.normal_simd_speedtest( THESMALLPRIME, 3);
-        aa.normal_simd_speedtest_serial( THESMALLPRIME, 3);
-        println!("Running benchmark u16...");
-        let aaa : CsrMatrix<u16> = a.tou16();
-        aaa.normal_simd_speedtest( THETINYPRIME, 3);
-        aaa.normal_simd_speedtest_serial( THETINYPRIME, 3);
-        let at = a.transpose().tou64();
-        println!("Running benchmark u64 (transpose)...");
-        at.normal_simd_speedtest( THESMALLPRIME as u64, 3);
-        at.normal_simd_speedtest_serial( THESMALLPRIME as u64, 3);
-        println!("Running benchmark u32 (transpose)...");
-        let aat : CsrMatrix<u32> = at.tou32();
-        aat.normal_simd_speedtest( THESMALLPRIME, 3);
-        aat.normal_simd_speedtest_serial( THESMALLPRIME, 3);
-        println!("Running benchmark u16 (transpose)...");
-        let aaat : CsrMatrix<u16> = at.tou16();
-        aaat.normal_simd_speedtest( THETINYPRIME, 3);
-        aaat.normal_simd_speedtest_serial( THETINYPRIME, 3);
-        return;
+    // compute desired sequence length if none was provided
+    if max_nlen <=0 {
+        let d = min(a.n_cols, a.n_rows) as f32;
+        max_nlen = (2.0 * d/(num_v as f32) + 4.0).floor() as usize; // 2* min(a.n_cols, a.n_rows);
     }
 
 
     // Check if already done with sequence computation
-    let to_be_computed = max_nlen - seq[0].len();
-    if to_be_computed <= 0 {
+    let to_be_computed = max_nlen.saturating_sub(seq[0].len());
+
+    if to_be_computed == 0 {
         println!("Already computed {} sequence entries, nothing to do.", seq[0].len());
 
     } else {
@@ -463,7 +495,6 @@ fn main() {
 
         let a = std::sync::Arc::new(a);
         let at = std::sync::Arc::new(at);
-        println!{"Done"}
     
         println!{"Starting computation with {} workers on {} lane(s) each...", num_workers, lanes}
         // let x : Box<&mut dyn VectorStream<MyInt>> = Box::new(&NormalVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone));

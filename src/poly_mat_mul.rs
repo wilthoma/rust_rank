@@ -5,8 +5,10 @@ use bubblemath::linear_recurrence::poly_mul;
 use crate::{ntt::{matrix_ntt_parallel, mod_add, mod_mul, ntt, NTTInteger}, polynomial};
 use rand::Rng;
 use std::cmp::min;
+use std::ops::Index;
 use num::BigUint;
 use std::time::Instant;
+use std::ops::{RangeBounds, Bound};
 
 const FFT_THRESHOLD: usize = 30; // for higher output degree, fft poly multiplication is used 
 
@@ -58,20 +60,20 @@ pub fn poly_mat_mul_bubble<T:NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, b: &
 
 }
 
-pub fn poly_mat_mul_bubble_red<T:NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, max_b_deg : usize) -> Vec<Vec<Vec<T>>> {
+pub fn poly_mat_mul_bubble_red<T:NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     let m = a.len();
     let n = a[0].len();
     let k = b[0].len();
     assert_eq!(n, b.len(), "Matrix dimensions do not match for multiplication");
 
     let nlena = a[0][0].len();
-    let nlenb = min(b[0][0].len(), max_b_deg+1);
+    let nlenb = min(b[0][0].len(), b_end_deg-b_start_deg);
     let nlenres = nlena + nlenb - 1;
     let mut result = vec![vec![vec![T::zero(); nlenres]; k]; m];
     for i in 0..m {
         for j in 0..k {
             for l in 0..n {
-                add_vects_in(&mut result[i][j], &KaraMultiply::poly_mul(&a[i][l], &b[l][j][0..nlenb], p), p);
+                add_vects_in(&mut result[i][j], &KaraMultiply::poly_mul(&a[i][l], &b[l][j][b_start_deg..b_end_deg], p), p);
             }
         }
     }
@@ -80,29 +82,31 @@ pub fn poly_mat_mul_bubble_red<T:NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, 
 
 
 
-pub fn poly_mat_mul_red_adaptive<T : NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, max_b_deg : usize) -> Vec<Vec<Vec<T>>> {
+
+
+pub fn poly_mat_mul_red_adaptive<T : NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     // selects the fastest method heuristically.
-    let deg = a[0][0].len() + min(b[0][0].len(), max_b_deg);
+    let deg = a[0][0].len() + min(b[0][0].len(), b_end_deg-b_start_deg);
     let nr_multi = a.len() * b.len() * b[0].len();
 
     if nr_multi < 200 && deg < FFT_THRESHOLD {
         // use bubble method
-        poly_mat_mul_bubble_red(a, b, p, max_b_deg)
+        poly_mat_mul_bubble_red(a, b, reducetoprime, b_start_deg, b_end_deg)
     } else {
         // use fft method
-        poly_mat_mul_fft_red(a, b, p, root, reducetoprime, max_b_deg)
+        poly_mat_mul_fft_red(a, b, p, root, reducetoprime, b_start_deg, b_end_deg)
     }
 }
 
 
-pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, max_b_deg : usize) -> Vec<Vec<Vec<T>>> {
+pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     let m = a.len();
     let n = a[0].len();
     let k = b[0].len();
     assert_eq!(n, b.len(), "Matrix dimensions do not match for multiplication");
 
     let nlena = a[0][0].len();
-    let nlenb = min(b[0][0].len(), max_b_deg);
+    let nlenb = min(b[0][0].len(), b_end_deg-b_start_deg);
     let nlenres = nlena + nlenb - 1;
 
 
@@ -127,7 +131,7 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
     for i in 0..n {
         for j in 0..k {
             for l in 0..nlenb {
-                fb[i][j][l] = b[i][j][l];
+                fb[i][j][l] = b[i][j][b_start_deg+l];
             }
         }
     }
@@ -172,12 +176,12 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
 /// Multiplies two matrices of polynomials using FFT and reduces the result modulo a prime.
 /// p should be a large prime relative to reducetoprime and the sequence size so that no overflow can occur.
 /// max_b_degree allows to restrict the coefficients of b to be considered to that length, even if the buffer is larger
-pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, max_b_deg : usize) -> Vec<Vec<Vec<T>>> {
+pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     // check whether prime is large enough for NTT
     let mut max_power_of_two = 1;
     let mut k = 0;
     let deg_a = a[0][0].len();
-    let deg_b = min(max_b_deg, b[0][0].len());
+    let deg_b = min(b_end_deg-b_start_deg, b[0][0].len());
     while (p.into() - 1) % (2 * max_power_of_two as u128 ) == 0 {
         max_power_of_two *= 2;
         k += 1;
@@ -191,7 +195,7 @@ pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Ve
     assert!( reducetoprime.into()*reducetoprime.into() * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
 
     // multiply
-    let mut red = poly_mat_mul_fft(a, b, p, root, max_b_deg);
+    let mut red = poly_mat_mul_fft(a, b, p, root, b_start_deg, b_end_deg);
 
     // reduce mod smaller prime
     let n = red.len();
@@ -206,6 +210,8 @@ pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Ve
     }
     red
 }
+
+
 
 /// Adapted u128 version of the bubblemath code 
 /// https://github.com/Bubbler-4/math-rs/blob/main/bubblemath/src/linear_recurrence.rs
@@ -245,7 +251,6 @@ pub fn poly_mul128(p1: &[u128], p2: &[u128], modulo: u128) -> Vec<u128> {
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,7 +287,7 @@ mod tests {
 
         // Compute results using both methods
         let result_bubble = poly_mat_mul_bubble(&a, &b, p);
-        let result_fft = poly_mat_mul_fft(&a, &b, p, root, usize::MAX);
+        let result_fft = poly_mat_mul_fft(&a, &b, p, root, 0, poly_len_b);
 
         // Assert that the results are the same
         assert_eq!(result_bubble, result_fft, "Results from poly_mat_mul_bubble and poly_mat_mul_fft do not match");
@@ -337,17 +342,13 @@ mod tests {
             let _result_poly_mul128 = poly_mul128(&p1, &p2, modulo);
             let duration_poly_mul128 = start.elapsed();
 
-            // Convert polynomials to u64 for poly_mul_fft
-            let p1_u64: Vec<u64> = p1.iter().map(|&x| (x % modulo) as u64).collect();
-            let p2_u64: Vec<u64> = p2.iter().map(|&x| (x % modulo) as u64).collect();
-
             // Prepare matrices for poly_mul_fft
-            let a = vec![vec![p1_u64.clone()]];
-            let b = vec![vec![p2_u64.clone()]];
+            let a = vec![vec![p1.clone()]];
+            let b = vec![vec![p2.clone()]];
 
             // Benchmark poly_mul_fft
             let start = Instant::now();
-            let _result_poly_mul_fft = poly_mat_mul_fft(&a, &b, modulo as u64, root as u64, usize::MAX);
+            let _result_poly_mul_fft = poly_mat_mul_fft(&a, &b, modulo, root, 0, b[0][0].len());
             let duration_poly_mul_fft = start.elapsed();
 
             // Print results
@@ -381,7 +382,7 @@ mod tests {
 
                 // Benchmark poly_mat_mul_fft
                 let start = Instant::now();
-                let _result_fft = poly_mat_mul_fft(&a, &b, p, root, usize::MAX);
+                let _result_fft = poly_mat_mul_fft(&a, &b, p, root, 0, b[0][0].len());
                 let duration_fft = start.elapsed();
 
                 // Print results
