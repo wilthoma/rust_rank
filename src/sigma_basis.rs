@@ -191,7 +191,7 @@ fn _PM_Basis(G : &Vec<Vec<Vec<u128>>>, d: usize, delta : &Vec<i128>, seqprime : 
         let start_time = std::time::Instant::now();
         // println!("startntt...");
         // let mut GG = poly_mat_mul_fft_red(&MM, &G, largeprime, root, seqprime, d*n+1);
-        let mut GG = poly_mat_mul_red_adaptive(&MM, &G, largeprime, root, seqprime, d*n+1);
+        let mut GG = poly_mat_mul_red_adaptive(&MM, &G, largeprime, root, seqprime, d+1);
         // let elapsed_time = start_time.elapsed();
         // println!("Time taken for poly_mat_mul_fft_red: {:?}", elapsed_time);
 
@@ -199,7 +199,7 @@ fn _PM_Basis(G : &Vec<Vec<Vec<u128>>>, d: usize, delta : &Vec<i128>, seqprime : 
         // println!("startntt2...");
         let (MMM, mumumu) = _PM_Basis(&GG, d/2, &mumu, seqprime, largeprime, root, progress);
         // let start_time = std::time::Instant::now();
-        let ret = (poly_mat_mul_red_adaptive(&MMM ,&MM, largeprime, root, seqprime, d*n+1), mumumu);
+        let ret = (poly_mat_mul_red_adaptive(&MMM ,&MM, largeprime, root, seqprime, d+1), mumumu);
         // let ret = (poly_mat_mul_fft_red(&MMM ,&MM, largeprime, root, seqprime, d*n+1), mumumu);
         // let elapsed_time = start_time.elapsed();
         // println!("Time taken for poly_mat_mul_fft_red 2: {:?}", elapsed_time);
