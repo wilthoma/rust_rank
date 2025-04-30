@@ -1,6 +1,7 @@
-use crate::{blockbmtest::analyze_min_generators, matrices::GoodInteger, modular_linalg::{lsp_decomposition, matrix_inverse, modular_determinant, modular_rank}, ntt::{mod_pow, modinv, NTTInteger}, poly_mat_mul::poly_mat_mul_fft_red};
+use crate::{blockbmtest::analyze_min_generators, matrices::GoodInteger, modular_linalg::{lsp_decomposition, matrix_inverse, modular_determinant, modular_rank}};
+use crate::{ntt::{mod_pow, modinv, NTTInteger}, poly_mat_mul::{poly_mat_mul_fft_red, poly_mat_mul_red_adaptive}};
 use nalgebra::DMatrix;
-use std::{fmt::Debug, ops::{Add, Mul}, vec};
+use std::{fmt::Debug, ops::{Add, Mul}, vec, io::Write};
 
 
 
@@ -25,7 +26,8 @@ pub fn PM_Basis<T: GoodInteger+Into<u128> >(seq : &Vec<Vec<T>>, d:usize, seqprim
     }
     let d = dd;
 
-    assert!(d*n<nlen, "Sequence too short to reach order nd={}, d={}, n={}, nlen={}", n*d,d, n, nlen);
+    assert!(d<nlen, "Sequence too short: d={}, n={}, nlen={}",d, n, nlen);
+    // assert!(d*n<nlen, "Sequence too short to reach order nd={}, d={}, n={}, nlen={}", n*d,d, n, nlen);
 
     // prepare input data. Also add a unit matrix of size nxn below the matrix
     let mut G = vec![vec![vec![0; nlen]; n]; 2*n];
@@ -45,7 +47,7 @@ pub fn PM_Basis<T: GoodInteger+Into<u128> >(seq : &Vec<Vec<T>>, d:usize, seqprim
 
     let delta = vec![0; 2*n];
 
-    let (M, mu) = _PM_Basis(&G, d, &delta, seqprime.into(), largeprime, root);
+    let (M, mu) = _PM_Basis(&G, d, &delta, seqprime.into(), largeprime, root, &mut ProgressData::new(d));
     
     (M, mu)
 }
@@ -149,30 +151,58 @@ pub fn analyze_pm_basis(basis : &Vec<Vec<Vec<u128>>>, delta : &Vec<i128>, p:u128
 }
 
 
-fn _PM_Basis(G : &Vec<Vec<Vec<u128>>>, d: usize, delta : &Vec<i128>, seqprime : u128, largeprime : u128, root : u128) -> (Vec<Vec<Vec<u128>>>, Vec<i128>) {
+struct ProgressData {
+    total : usize,
+    current : usize,
+    start_time : std::time::Instant,
+}
+impl ProgressData {
+    fn new(total : usize) -> Self {
+        ProgressData {
+            total,
+            current : 0,
+            start_time : std::time::Instant::now(),
+        }
+    }
+    #[inline(always)]
+    fn progress_tick(&mut self) {
+        self.current += 1;
+        if self.current % 100 == 0 {
+            let elapsed_time = self.start_time.elapsed();
+            let percent = (self.current as f64 / self.total as f64) * 100.0;
+            print!("\rSigma basis progress: {:.2}% ({} of {}), Time elapsed: {:?}    ", percent, self.current, self.total, elapsed_time);
+            std::io::stdout().flush().unwrap();
+        }
+    }
+}
+
+fn _PM_Basis(G : &Vec<Vec<Vec<u128>>>, d: usize, delta : &Vec<i128>, seqprime : u128, largeprime : u128, root : u128, progress : &mut ProgressData) -> (Vec<Vec<Vec<u128>>>, Vec<i128>) {
     // must have d= 0 or d= power of 2
     let n = G.len();
 
     if d == 0 {
         (unit_mat(n), delta.clone())
     } else if d==1 {
+        progress.progress_tick();
         M_Basis(G, delta, seqprime)
     } else {
-        let (MM, mumu) = _PM_Basis(G, d/2, delta, seqprime, largeprime, root);
+        let (MM, mumu) = _PM_Basis(G, d/2, delta, seqprime, largeprime, root, progress);
 
         let start_time = std::time::Instant::now();
-        println!("startntt...");
-        let mut GG = poly_mat_mul_fft_red(&MM, &G, largeprime, root, seqprime, d*n+1);
-        let elapsed_time = start_time.elapsed();
-        println!("Time taken for poly_mat_mul_fft_red: {:?}", elapsed_time);
+        // println!("startntt...");
+        // let mut GG = poly_mat_mul_fft_red(&MM, &G, largeprime, root, seqprime, d*n+1);
+        let mut GG = poly_mat_mul_red_adaptive(&MM, &G, largeprime, root, seqprime, d*n+1);
+        // let elapsed_time = start_time.elapsed();
+        // println!("Time taken for poly_mat_mul_fft_red: {:?}", elapsed_time);
 
         shift_trunc_in(&mut GG, d/2);
-        println!("startntt2...");
-        let (MMM, mumumu) = _PM_Basis(&GG, d/2, &mumu, seqprime, largeprime, root);
-        let start_time = std::time::Instant::now();
-        let ret = (poly_mat_mul_fft_red(&MMM ,&MM, largeprime, root, seqprime, d*n+1), mumumu);
-        let elapsed_time = start_time.elapsed();
-        println!("Time taken for poly_mat_mul_fft_red 2: {:?}", elapsed_time);
+        // println!("startntt2...");
+        let (MMM, mumumu) = _PM_Basis(&GG, d/2, &mumu, seqprime, largeprime, root, progress);
+        // let start_time = std::time::Instant::now();
+        let ret = (poly_mat_mul_red_adaptive(&MMM ,&MM, largeprime, root, seqprime, d*n+1), mumumu);
+        // let ret = (poly_mat_mul_fft_red(&MMM ,&MM, largeprime, root, seqprime, d*n+1), mumumu);
+        // let elapsed_time = start_time.elapsed();
+        // println!("Time taken for poly_mat_mul_fft_red 2: {:?}", elapsed_time);
         ret
     }
 }

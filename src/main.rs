@@ -46,10 +46,10 @@ use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 type MyInt = u32;
 
 const THEPRIME: u32 = 27644437; // A large prime number for modular arithmetic
-// const THESMALLPRIME : u32 = 3323;
+const THESMALLPRIME : u32 = 3323;
 const THETINYPRIME : u16 = 23;
 // const THESMALLPRIME : u32 = 6481;
-const THESMALLPRIME : u32 = 5669;
+// const THESMALLPRIME : u32 = 5669;
 
 const REPORT_AFTER: f64 = 1.0; // seconds
 
@@ -526,7 +526,12 @@ fn main() {
 
     let largeprime : u128 = 9223372036737335297;  // Prime modulus
     let root: u128 = 3;     // Primitive root of unity modulo P
-    let thed = 4000; //v[0].len() *2 / (num_v * num_v) + 3000; 
+    // take for d the max power of two fitting the number of available tokens
+    let mut thed = 1; //v[0].len() *2 / (num_v * num_v) + 3000; 
+    while thed <= seq[0].len() {
+        thed *= 2;
+    }
+    thed /= 2;
     // let thed =v[0].len() *2 / (num_v * num_v) + 3000; 
     let (pmb, del) = PM_Basis(&seq, thed, prime, largeprime, root);
     analyze_pm_basis(&pmb, &del, prime as u128);
