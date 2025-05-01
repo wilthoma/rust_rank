@@ -7,11 +7,12 @@ use num_traits::{One, Zero};
 use rand::distr::uniform::SampleUniform;
 use std::fmt::{Display, Debug};
 use std::iter::Sum;
+use std::ops::{Shl, Shr};
 use rand::Rng;
 
 
-pub trait NTTInteger: Debug+Into<u128> + From<u32>+ MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
-impl<T: Debug+Into<u128> + From<u32>+MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+ Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> NTTInteger for T {}
+pub trait NTTInteger: Shl<u32, Output = Self>  + Shr<u32, Output = Self> + Debug+Into<u128> + From<u32>+ MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync +'static { }
+impl<T: Shl<u32, Output = Self>  + Shr<u32, Output = Self> + Debug+Into<u128> + From<u32>+MulAssign+ Div<Output = Self> + DivAssign + Sub<Output = Self> + SubAssign + Display+ Sum+PartialOrd + SampleUniform + Copy + Zero + One + Rem<Output = Self> + Add<Output = Self> + AddAssign + Mul<Output = Self> + Send + Sync+'static> NTTInteger for T {}
 
 
 #[inline(always)]
@@ -27,10 +28,27 @@ pub fn mod_sub<T : NTTInteger>(mut a: T, b: T, p:T) -> T {
     a - b
 }
 
-#[inline(always)]
+#[inline(always)] // Total HACK here
 pub fn mod_mul<T : NTTInteger>(a: T, b: T, p : T) -> T {
-    (a * b) % p // !!!!! this % is responsible for 2/3 of the runtime -- optimize
+    if p > (T::one() << 32) {
+        mod_fast(a * b,p)
+    } else  {
+        (a * b) % p
+    }
+    //(a * b) % p // !!!!! this % is responsible for >2/3 of the runtime -- optimize
+    //mod_fast(a * b,p) // !!!!! this % is responsible for 2/3 of the runtime -- optimize
 }
+
+#[inline(always)]
+pub fn mod_fast<T : NTTInteger >(a: T, p:T) -> T {
+    // only valid for 18446744069414584321
+    let cc = ((a << 64) >> 64);
+    let bb = ((a<<32) >> 96);
+    let aa = (a >> 96);
+    mod_sub(mod_sub(mod_add(cc,  bb << 32,p), bb,p), aa,p)
+}
+
+
 
 
 #[inline(always)]
@@ -317,4 +335,29 @@ mod tests {
 
     //     assert_eq!(data1, data2, "Results of NTT and NTT_SIMD should agree");
     // }
+
+
+    #[test]
+    fn test_mod_fast_vs_standard_modulus() {
+        let p = 18446744069414584321u64; // Special modulus
+        let test_cases = vec![
+            (12345678901234567890u64, 9876543210987654321u64),
+            (p - 1, p - 2),
+            (0, 0),
+            (1, 1),
+            (u64::MAX, u64::MAX - 1),
+        ];
+
+        for (a, b) in test_cases {
+            let product = a as u128 * b as u128;
+            let standard_mod = (product % p as u128);
+            let fast_mod = mod_fast(product , p as u128);
+
+            assert_eq!(
+                fast_mod, standard_mod,
+                "mod_fast and standard modulus % p did not match for inputs a = {}, b = {}",
+                a, b
+            );
+        }
+    }
 }
