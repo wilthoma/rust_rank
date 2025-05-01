@@ -667,6 +667,7 @@ dependencies = [
  "nalgebra",
  "num",
  "num-traits",
+ "once_cell",
  "petgraph",
  "quickdiv",
  "rand",

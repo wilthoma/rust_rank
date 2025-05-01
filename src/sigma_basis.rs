@@ -1,7 +1,7 @@
 use crate::{blockbmtest::analyze_min_generators, matrices::GoodInteger, modular_linalg::{lsp_decomposition, matrix_inverse, modular_determinant, modular_rank}};
 use crate::{ntt::{mod_pow, modinv, NTTInteger}, poly_mat_mul::{poly_mat_mul_fft_red, poly_mat_mul_red_adaptive}};
 use nalgebra::DMatrix;
-use std::{fmt::Debug, ops::{Add, Mul}, vec, io::Write};
+use std::{fmt::Debug, ops::{Add, Mul}, vec, io::Write, cmp::min};
 
 
 
@@ -48,6 +48,7 @@ pub fn PM_Basis<T: GoodInteger+Into<u128> >(seq : &Vec<Vec<T>>, d:usize, seqprim
     let delta = vec![0; 2*n];
 
     let (M, mu) = _PM_Basis(&G, d, &delta, seqprime.into(), largeprime, root, &mut ProgressData::new(d));
+    // let (M, mu,_) = _PM_Basis2(&G, d, &delta, seqprime.into(), largeprime, root, &mut ProgressData::new(d));
     
     (M, mu)
 }
@@ -205,15 +206,67 @@ fn _PM_Basis(G : &Vec<Vec<Vec<u128>>>, d: usize, delta : &Vec<i128>, seqprime : 
         // let elapsed_time = start_time.elapsed();
         // println!("Time taken for poly_mat_mul_fft_red: {:?}", elapsed_time);
 
-        shift_trunc_in(&mut GG, d/2);
+        shift_trunc_in(&mut GG, d/2, d/2);
         // println!("startntt2...");
         let (MMM, mumumu) = _PM_Basis(&GG, d/2, &mumu, seqprime, largeprime, root, progress);
         // let start_time = std::time::Instant::now();
-        let ret = (poly_mat_mul_red_adaptive(&MMM ,&MM, largeprime, root, seqprime, 0, d+1), mumumu);
+        (poly_mat_mul_red_adaptive(&MMM ,&MM, largeprime, root, seqprime, 0, MM[0][0].len()), mumumu)
         // let ret = (poly_mat_mul_fft_red(&MMM ,&MM, largeprime, root, seqprime, d*n+1), mumumu);
         // let elapsed_time = start_time.elapsed();
         // println!("Time taken for poly_mat_mul_fft_red 2: {:?}", elapsed_time);
-        ret
+        // ret
+    }
+}
+
+
+fn addm_inplace(a : &mut Vec<Vec<Vec<u128>>>, b : &Vec<Vec<Vec<u128>>>) {
+    if b.len() == 0 {
+        return;
+    }
+    let n = a.len();
+    let m = a[0].len();
+    for i in 0..n {
+        for j in 0..m {
+            for k in 0..min(a[i][j].len(), b[i][j].len()) {
+                a[i][j][k] += b[i][j][k];
+            }
+        }
+    }
+}
+
+fn _PM_Basis2(G : &Vec<Vec<Vec<u128>>>, d: usize, delta : &Vec<i128>, seqprime : u128, largeprime : u128, root : u128, progress : &mut ProgressData) -> (Vec<Vec<Vec<u128>>>, Vec<i128>, Vec<Vec<Vec<u128>>>) {
+    // must have d= 0 or d= power of 2
+    let n = G.len();
+
+    if d == 0 {
+        (unit_mat(n), delta.clone(), vec![])
+    } else if d==1 {
+        progress.progress_tick();
+        let (M, delta) = M_Basis(G, delta, seqprime);
+        let mut carry = poly_mat_mul_red_adaptive(&M, G, largeprime, root, seqprime, 0, 1);
+        shift_trunc_in(&mut carry, 1, 0);
+        (M, delta, carry)
+    } else {
+        let (MM, mumu, carry1) = _PM_Basis2(G, d/2, delta, seqprime, largeprime, root, progress);
+
+        // let start_time = std::time::Instant::now();
+        // println!("startntt...");
+        // let mut GG = poly_mat_mul_fft_red(&MM, &G, largeprime, root, seqprime, d*n+1);
+        let mut GG = poly_mat_mul_red_adaptive(&MM, &G, largeprime, root, seqprime, d/2, d+1);
+        // let elapsed_time = start_time.elapsed();
+        // println!("Time taken for poly_mat_mul_fft_red: {:?}", elapsed_time);
+
+        addm_inplace(&mut GG, &carry1);
+        //shift_trunc_in(&mut GG, d/2);
+        // println!("startntt2...");
+        let (MMM, mumumu, carry2) = _PM_Basis2(&GG, d/2, &mumu, seqprime, largeprime, root, progress);
+        // shift_trunc_in(&mut carry2, d/2, d/2);
+        // let start_time = std::time::Instant::now();
+        (poly_mat_mul_red_adaptive(&MMM ,&MM, largeprime, root, seqprime, 0, MM[0][0].len()), mumumu, carry2)
+        // let ret = (poly_mat_mul_fft_red(&MMM ,&MM, largeprime, root, seqprime, d*n+1), mumumu);
+        // let elapsed_time = start_time.elapsed();
+        // println!("Time taken for poly_mat_mul_fft_red 2: {:?}", elapsed_time);
+        // ret
     }
 }
 
@@ -227,15 +280,15 @@ fn unit_mat(n : usize) -> Vec<Vec<Vec<u128>>> {
 }
 
 
-fn shift_trunc_in(mat : &mut Vec<Vec<Vec<u128>>>, shiftd: usize) {
+fn shift_trunc_in(mat : &mut Vec<Vec<Vec<u128>>>, shiftd: usize, truncd:usize) {
     let m = mat.len();
     let n = mat[0].len();
     for i in 0..m {
         for j in 0..n {
-            for k in 0..(shiftd+1) {
+            for k in 0..(truncd+1) {
                 mat[i][j][k] = mat[i][j][k+shiftd];
             }
-            mat[i][j].resize(shiftd +1, 0);
+            mat[i][j].resize(truncd +1, 0);
         }
     } 
 }
@@ -361,6 +414,7 @@ pub fn M_Basis(G : &Vec<Vec<Vec<u128>>>, delta : &Vec<i128>, prime : u128) -> (V
     (ret, delta)
 
 }
+
 
 
 // fn modinv2(a: u128, p: u128) -> u128 {

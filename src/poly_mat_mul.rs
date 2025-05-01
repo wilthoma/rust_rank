@@ -4,7 +4,9 @@ use bubblemath::linear_recurrence::poly_mul;
 
 use crate::{ntt::{matrix_ntt_parallel, mod_add, mod_mul, ntt, NTTInteger}, polynomial};
 use rand::Rng;
-use std::cmp::min;
+use std::{cmp::min, time::Duration};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
 use std::ops::Index;
 use num::BigUint;
 use std::time::Instant;
@@ -98,6 +100,15 @@ pub fn poly_mat_mul_red_adaptive<T : NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>
     }
 }
 
+// let mut ntt_time : Duration = Duration::new(0, 0);
+// let mut mul_time : Duration = Duration::new(0, 0);
+
+static NTT_TIME: Lazy<Mutex<Duration>> = Lazy::new(|| Mutex::new(Duration::new(0, 0)));
+static MUL_TIME: Lazy<Mutex<Duration>> = Lazy::new(|| Mutex::new(Duration::new(0, 0)));
+
+static NTT_TIME_L: Lazy<Mutex<Duration>> = Lazy::new(|| Mutex::new(Duration::new(0, 0)));
+static MUL_TIME_L: Lazy<Mutex<Duration>> = Lazy::new(|| Mutex::new(Duration::new(0, 0)));
+
 
 pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     let m = a.len();
@@ -136,6 +147,7 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
         }
     }
     // compute ffts
+    let start = Instant::now();
     matrix_ntt_parallel(&mut fa, false, p, root);
     // for i in 0..m {
     //     for j in 0..n {
@@ -143,6 +155,7 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
     //     }
     // }
     matrix_ntt_parallel(&mut fb, false, p, root);
+    let mut durationntt = start.elapsed();
     // for i in 0..n {
     //     for j in 0..k {
     //         ntt(&mut fb[i][j], false, p, root);
@@ -150,18 +163,66 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
     // }
 
     // multiply matrices
-    for i in 0..m {
-        for j in 0..k {
+    let start = Instant::now();
+    use rayon::prelude::*;
+
+    fresult.par_iter_mut().enumerate().for_each(|(i, row)| {
+        row.par_iter_mut().enumerate().for_each(|(j, cell)| {
             for r in 0..n {
                 for l in 0..nlenres_adj {
-                    fresult[i][j][l] = mod_add(fresult[i][j][l], mod_mul(fa[i][r][l], fb[r][j][l],p), p);
+                    cell[l] = mod_add(cell[l], mod_mul(fa[i][r][l], fb[r][j][l], p), p);
                 }
             }
+        });
+    });
+
+    // for i in 0..m {
+    //     for j in 0..k {
+    //         for r in 0..n {
+    //             for l in 0..nlenres_adj {
+    //                 fresult[i][j][l] = mod_add(fresult[i][j][l], mod_mul(fa[i][r][l], fb[r][j][l],p), p);
+    //             }
+    //         }
+    //     }
+    // }
+
+    let durationmul = start.elapsed();
+    // compute iffts qnd resize result
+    let start = Instant::now();
+    matrix_ntt_parallel(&mut fresult, true, p, root);
+    durationntt += start.elapsed();
+
+    {
+        let mut mul_time_guard = MUL_TIME.lock().unwrap();
+        *mul_time_guard += durationmul;
+    }
+    {
+        let mut ntt_time_guard = NTT_TIME.lock().unwrap();
+        *ntt_time_guard += durationntt;
+    }
+    let ntt_time = *NTT_TIME.lock().unwrap();
+    let mul_time = *MUL_TIME.lock().unwrap();
+
+    if durationmul.as_millis() > 10 || durationntt.as_millis() > 10 {
+        {
+            let mut mul_time_guard = MUL_TIME_L.lock().unwrap();
+            *mul_time_guard += durationmul;
+        }
+        {
+            let mut ntt_time_guard = NTT_TIME_L.lock().unwrap();
+            *ntt_time_guard += durationntt;
         }
     }
+    let ntt_timel = *NTT_TIME_L.lock().unwrap();
+    let mul_timel = *MUL_TIME_L.lock().unwrap();
 
-    // compute iffts qnd resize result
-    matrix_ntt_parallel(&mut fresult, true, p, root);
+    if durationmul.as_millis() > 200 || durationntt.as_millis() > 200 {
+        println!(
+            "\nDuration (Multiplication): {:?} (total {:?}, {:?}) , Duration (NTT): {:?} (total {:?}, {:?})",
+            durationmul, mul_time, mul_timel, durationntt, ntt_time, ntt_timel
+        );
+    }
+
     for i in 0..m {
         for j in 0..k {
             // ntt(&mut fresult[i][j], true, p, root);
@@ -178,21 +239,21 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
 /// max_b_degree allows to restrict the coefficients of b to be considered to that length, even if the buffer is larger
 pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     // check whether prime is large enough for NTT
-    let mut max_power_of_two = 1;
-    let mut k = 0;
-    let deg_a = a[0][0].len();
-    let deg_b = min(b_end_deg-b_start_deg, b[0][0].len());
-    while (p.into() - 1) % (2 * max_power_of_two as u128 ) == 0 {
-        max_power_of_two *= 2;
-        k += 1;
-    }
-    let ntt_limit = max_power_of_two;
+    // let mut max_power_of_two = 1;
+    // let mut k = 0;
+    // let deg_a = a[0][0].len();
+    // let deg_b = min(b_end_deg-b_start_deg, b[0][0].len());
+    // while (p.into() - 1) % (2 * max_power_of_two as u128 ) == 0 {
+    //     max_power_of_two *= 2;
+    //     k += 1;
+    // }
+    // let ntt_limit = max_power_of_two;
 
-    let required_size = (deg_a + deg_b).next_power_of_two();
-    assert!( required_size < ntt_limit, "Polynomials are too large for this modulus (NTT size too big) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
+    // let required_size = (deg_a + deg_b).next_power_of_two();
+    // assert!( required_size < ntt_limit, "Polynomials are too large for this modulus (NTT size too big) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
 
-    // no overflow possible?
-    assert!( reducetoprime.into()*reducetoprime.into() * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
+    // // no overflow possible?
+    // assert!( reducetoprime.into()*reducetoprime.into() * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
 
     // multiply
     let mut red = poly_mat_mul_fft(a, b, p, root, b_start_deg, b_end_deg);
