@@ -372,10 +372,10 @@ fn main() {
     let lanes: usize = *matches.get_one::<usize>("lanes").unwrap_or(&1);
     // let mut num_u: usize = *matches.get_one::<usize>("num_u").unwrap_or(&1);
     let mut num_workers: usize = *matches.get_one::<usize>("num_workers").unwrap_or(&1);
-    let num_v = num_workers * lanes;
+    let num_v = num_workers * lanes; // the total number of vectors v for which we compute A^kv
 
     let mut prime = pprime as MyInt;
-    let wdm_filename = if transpose_matrix {format!("{}_t.wdm", filename) } else {format!("{}.wdm", filename)}; 
+    let wdm_filename = if transpose_matrix {format!("{}_{}_t.wdm", filename, num_v) } else {format!("{}_{}.wdm", filename, num_v)}; 
 
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
