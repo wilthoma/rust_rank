@@ -557,6 +557,9 @@ fn main() {
 
     let largeprime : u128 = 9223372036737335297;  // Prime modulus
     let root: u128 = 3;     // Primitive root of unity modulo P
+    let largeprime : u128 = 18446744069414584321; // prime with fast mod reduction 
+    let root: u128 = 7;
+
     // take for d the max power of two fitting the number of available tokens
     let mut thed = 1; //v[0].len() *2 / (num_v * num_v) + 3000; 
     while thed <= seq[0].len() {

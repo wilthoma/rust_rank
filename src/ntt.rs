@@ -29,8 +29,9 @@ pub fn mod_sub<T : NTTInteger>(mut a: T, b: T, p:T) -> T {
 
 #[inline(always)]
 pub fn mod_mul<T : NTTInteger>(a: T, b: T, p : T) -> T {
-    (a * b) % p
+    (a * b) % p // !!!!! this % is responsible for 2/3 of the runtime -- optimize
 }
+
 
 #[inline(always)]
 pub fn mod_pow<T : NTTInteger>(mut base: T, mut exp: T, p:T) -> T {
