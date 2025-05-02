@@ -86,7 +86,7 @@ pub fn poly_mat_mul_bubble_red<T:NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, 
 
 
 
-pub fn poly_mat_mul_red_adaptive<T : NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
+pub fn poly_mat_mul_red_adaptive<T : NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, reducetoprime : T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     // selects the fastest method heuristically.
     let deg = a[0][0].len() + min(b[0][0].len(), b_end_deg-b_start_deg);
     let nr_multi = a.len() * b.len() * b[0].len();
@@ -96,7 +96,7 @@ pub fn poly_mat_mul_red_adaptive<T : NTTInteger+KaraMultiply>(a: &Vec<Vec<Vec<T>
         poly_mat_mul_bubble_red(a, b, reducetoprime, b_start_deg, b_end_deg)
     } else {
         // use fft method
-        poly_mat_mul_fft_red(a, b, p, root, reducetoprime, b_start_deg, b_end_deg)
+        poly_mat_mul_fft_red(a, b, reducetoprime, b_start_deg, b_end_deg)
     }
 }
 
@@ -110,7 +110,7 @@ static NTT_TIME_L: Lazy<Mutex<Duration>> = Lazy::new(|| Mutex::new(Duration::new
 static MUL_TIME_L: Lazy<Mutex<Duration>> = Lazy::new(|| Mutex::new(Duration::new(0, 0)));
 
 
-pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
+pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     let m = a.len();
     let n = a[0].len();
     let k = b[0].len();
@@ -237,26 +237,9 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
 /// Multiplies two matrices of polynomials using FFT and reduces the result modulo a prime.
 /// p should be a large prime relative to reducetoprime and the sequence size so that no overflow can occur.
 /// max_b_degree allows to restrict the coefficients of b to be considered to that length, even if the buffer is larger
-pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, p: T, root: T, reducetoprime : T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
-    // check whether prime is large enough for NTT
-    // let mut max_power_of_two = 1;
-    // let mut k = 0;
-    // let deg_a = a[0][0].len();
-    // let deg_b = min(b_end_deg-b_start_deg, b[0][0].len());
-    // while (p.into() - 1) % (2 * max_power_of_two as u128 ) == 0 {
-    //     max_power_of_two *= 2;
-    //     k += 1;
-    // }
-    // let ntt_limit = max_power_of_two;
-
-    // let required_size = (deg_a + deg_b).next_power_of_two();
-    // assert!( required_size < ntt_limit, "Polynomials are too large for this modulus (NTT size too big) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
-
-    // // no overflow possible?
-    // assert!( reducetoprime.into()*reducetoprime.into() * ((deg_a + deg_b) as u128) < p.into(), "Polynomials are too large for this modulus (overflow possible) largeprime: {} sequence prime: {} degrees: {}, {}", p, reducetoprime, deg_a, deg_b);
-
+pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>, reducetoprime : T, b_start_deg :usize, b_end_deg : usize) -> Vec<Vec<Vec<T>>> {
     // multiply
-    let mut red = poly_mat_mul_fft(a, b, p, root, b_start_deg, b_end_deg);
+    let mut red = poly_mat_mul_fft(a, b, b_start_deg, b_end_deg);
 
     // reduce mod smaller prime
     let n = red.len();
@@ -272,7 +255,28 @@ pub fn poly_mat_mul_fft_red<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Ve
     red
 }
 
+// check whether prime is ok for NTT
+pub fn is_prime_valid_ntt<T:NTTInteger>(smallprime : T, max_seq_len : usize) -> bool {
+    let smallp : u128 = smallprime.into();
+    let mut ntt_limit:usize = 1;
+    let p = T::PRIME.into();
+    while (p- 1) % (ntt_limit as u128 ) == 0 {
+        ntt_limit *= 2;
+    }
 
+    let required_size = max_seq_len.next_power_of_two();
+    if required_size >= ntt_limit  {
+        println!("Polynomials are too large for this modulus (NTT size too big) largeprime: {} sequence prime: {} sequence length: {}", p, smallp, required_size);
+        return false;
+    }
+    
+    // no overflow possible?
+    if smallp * smallp * (required_size as u128) >= p.into() {
+        println!("Polynomials are too large for this modulus (overflow possible) largeprime: {} sequence prime: {} sequence length: {}", p, smallp, required_size);
+        return false;
+    }
+    true
+}
 
 /// Adapted u128 version of the bubblemath code 
 /// https://github.com/Bubbler-4/math-rs/blob/main/bubblemath/src/linear_recurrence.rs
@@ -351,7 +355,7 @@ mod tests {
         // Compute results using both methods
         // we need to use bubble for u128 to avoid overflow. u64 bubble assumes all values are <2^32
         let result_bubble = poly_mat_mul_bubble(&a128, &b128, p as u128);
-        let result_fft = poly_mat_mul_fft(&a, &b, p, root, 0, poly_len_b);
+        let result_fft = poly_mat_mul_fft(&a, &b, 0, poly_len_b);
 
         // Assert that the results are the same
         let result_bubble64 = result_bubble.iter().map(|row| row.iter().map(|poly| poly.iter().map(|&x| x as u64).collect()).collect()).collect::<Vec<Vec<Vec<u64>>>>();
@@ -413,7 +417,7 @@ mod tests {
 
             // Benchmark poly_mul_fft
             let start = Instant::now();
-            let _result_poly_mul_fft = poly_mat_mul_fft(&a, &b, modulo, root, 0, b[0][0].len());
+            let _result_poly_mul_fft = poly_mat_mul_fft(&a, &b, 0, b[0][0].len());
             let duration_poly_mul_fft = start.elapsed();
 
             // Print results
@@ -448,7 +452,7 @@ mod tests {
 
                 // Benchmark poly_mat_mul_fft
                 let start = Instant::now();
-                let _result_fft = poly_mat_mul_fft(&a, &b, p, root, 0, b[0][0].len());
+                let _result_fft = poly_mat_mul_fft(&a, &b, 0, b[0][0].len());
                 let duration_fft = start.elapsed();
 
                 // Print results

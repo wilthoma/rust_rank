@@ -9,6 +9,8 @@ use crate::{invariant_factor::{top_invariant_factor, vec_matrix_to_poly_matrix},
 
 type Matrix<T> = DMatrix<T>;
 
+use crate::modular_linalg::modular_rank;
+
 // use std::cmp::{min, max};
 
 /// Matrix Berlekamp-Massey algorithm
@@ -460,57 +462,58 @@ pub fn is_generating_poly(poly : &Vec<Matrix<i64>>, seq : &Vec<Matrix<i64>>, p:i
 }
 
 
-pub fn modular_rank(mat: &DMatrix<i64>, p: i64) -> usize {
-    let mut mat = mat.clone();
-    let nrows = mat.nrows();
-    let ncols = mat.ncols();
+// pub fn modular_rank(mat: &DMatrix<i64>, p: i64) -> usize {
+//     let mut mat = mat.clone();
+//     let nrows = mat.nrows();
+//     let ncols = mat.ncols();
 
-    let mut rank = 0;
+//     let mut rank = 0;
 
-    // Reduce entries modulo p
-    for i in 0..nrows {
-        for j in 0..ncols {
-            mat[(i, j)] = (mat[(i, j)] % p + p) % p;
-        }
-    }
+//     // Reduce entries modulo p
+//     for i in 0..nrows {
+//         for j in 0..ncols {
+//             mat[(i, j)] = (mat[(i, j)] % p + p) % p;
+//         }
+//     }
 
-    for col in 0..ncols {
-        // 1. Find a pivot row
-        let mut pivot_row = None;
-        for row in rank..nrows {
-            if mat[(row, col)] != 0 {
-                pivot_row = Some(row);
-                break;
-            }
-        }
+//     for col in 0..ncols {
+//         // 1. Find a pivot row
+//         let mut pivot_row = None;
+//         for row in rank..nrows {
+//             if mat[(row, col)] != 0 {
+//                 pivot_row = Some(row);
+//                 break;
+//             }
+//         }
 
-        if let Some(pivot_idx) = pivot_row {
-            // 2. Swap pivot row into position
-            mat.swap_rows(rank, pivot_idx);
+//         if let Some(pivot_idx) = pivot_row {
+//             // 2. Swap pivot row into position
+//             mat.swap_rows(rank, pivot_idx);
 
-            // 3. Normalize pivot row (optional for rank, but clean)
-            let inv = modinv(mat[(rank, col)], p);
-            for j in col..ncols {
-                mat[(rank, j)] = (mat[(rank, j)] * inv) % p;
-            }
+//             // 3. Normalize pivot row (optional for rank, but clean)
+//             let inv = modinv(mat[(rank, col)], p);
+//             for j in col..ncols {
+//                 mat[(rank, j)] = (mat[(rank, j)] * inv) % p;
+//             }
 
-            // 4. Eliminate rows below
-            for row in (rank + 1)..nrows {
-                let factor = mat[(row, col)];
-                for j in col..ncols {
-                    mat[(row, j)] = (mat[(row, j)] - factor * mat[(rank, j)]).rem_euclid(p);
-                }
-            }
+//             // 4. Eliminate rows below
+//             for row in (rank + 1)..nrows {
+//                 let factor = mat[(row, col)];
+//                 for j in col..ncols {
+//                     let sub = mat[(rank, j)] * factor;
+//                     mat[(row, j)] = (mat[(row, j)] + p - sub).rem_euclid(p);
+//                 }
+//             }
 
-            rank += 1;
-            if rank == nrows {
-                break;
-            }
-        }
-    }
+//             rank += 1;
+//             if rank == nrows {
+//                 break;
+//             }
+//         }
+//     }
 
-    rank
-}
+//     rank
+// }
 
 pub fn modular_determinant(mat: &DMatrix<i64>, p: i64) -> i64 {
     assert!(mat.is_square(), "Matrix must be square to compute determinant mod p");
@@ -568,7 +571,7 @@ pub fn modular_determinant(mat: &DMatrix<i64>, p: i64) -> i64 {
     det
 }
 
-pub fn analyze_min_generators(poly : &Vec<Matrix<i64>>, p:i64)
+pub fn analyze_min_generators<S:NTTInteger>(poly : &Vec<Matrix<S>>, p:S)
 {
     let n = poly[0].nrows();
     let k = poly.len();
@@ -585,7 +588,7 @@ pub fn analyze_min_generators(poly : &Vec<Matrix<i64>>, p:i64)
     for j in 0..poly[0].ncols() {
         let mut deg = 0;
         for i in 0..poly.len() {
-            if poly[i].column(j).iter().any(|&x| x != 0) {
+            if poly[i].column(j).iter().any(|&x| x != S::zero()) {
                 deg = i;
             }
         }

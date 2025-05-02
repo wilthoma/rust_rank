@@ -4,6 +4,7 @@ use std::{fmt::Debug, ops::{Add, Mul}, vec};
 
 
 
+
 /// Computes the modular inverse of a matrix modulo `p`.
 /// Panics if the matrix is not invertible.
 pub fn matrix_inverse<T: NTTInteger>(mat: &DMatrix<T>, p: T) -> DMatrix<T> {
@@ -184,12 +185,12 @@ pub fn modular_rank<T : NTTInteger + Debug>(mat: &DMatrix<T>, p: T) -> usize {
 
 /// Computes the LSP decomposition of a matrix modulo p.
 /// LSP decomposition: A = L * S * P (mod p)
-pub fn lsp_decomposition(a: &DMatrix<u128>, p: u128) -> (DMatrix<u128>, DMatrix<u128>, DMatrix<u128>) {
+pub fn lsp_decomposition<T:NTTInteger>(a: &DMatrix<T>, p: T) -> (DMatrix<T>, DMatrix<T>, DMatrix<T>) {
     let mut a = a.clone();
     let m = a.nrows();
     assert_eq!(m, a.ncols(), "Matrix must be square");
 
-    let mut l = DMatrix::<u128>::identity(m, m);
+    let mut l = DMatrix::<T>::identity(m, m);
     let mut perm = (0..m).collect::<Vec<usize>>();
 
     let mut rank = 0;
@@ -198,7 +199,7 @@ pub fn lsp_decomposition(a: &DMatrix<u128>, p: u128) -> (DMatrix<u128>, DMatrix<
         // Find pivot in row k (column-wise search)
         let mut pivot_col = None;
         for j in rank..m {
-            if a[(k, j)] % p != 0 {
+            if a[(k, j)] % p != T::zero() {
                 pivot_col = Some(j);
                 break;
             }
@@ -225,10 +226,10 @@ pub fn lsp_decomposition(a: &DMatrix<u128>, p: u128) -> (DMatrix<u128>, DMatrix<
     }
 
     // Build the permutation matrix P
-    let mut pmat = DMatrix::<u128>::zeros(m, m);
+    let mut pmat = DMatrix::<T>::zeros(m, m);
     for (i, &j) in perm.iter().enumerate() {
         // pmat[(i, j)] = 1;
-        pmat[(j, i)] = 1;
+        pmat[(j, i)] = T::one();
     }
 
     // Final modular reduction

@@ -17,6 +17,7 @@ mod sigma_basis;
 mod poly_mat_mul;
 mod modular_linalg;
 use nalgebra::DMatrix;
+use poly_mat_mul::is_prime_valid_ntt;
 use polynomial::{poly_matrix_determinant, top_invariant_factor, top_invariant_factor_fast, vec_matrix_to_poly_matrix3};
 use bubblemath::linear_recurrence::berlekamp_massey;
 use sigma_basis::{analyze_pm_basis, PM_Basis};
@@ -44,6 +45,7 @@ use core::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 // type MyInt = u64;
 // type MyInt = u32;
 type MyInt = u32;
+type MySBInt = u64; // integer type for the sigma basis computation. Should be u64 or u128
 
 const THEPRIME: u32 = 27644437; // A large prime number for modular arithmetic
 const THESMALLPRIME : u32 = 3323;
@@ -454,10 +456,11 @@ fn main() {
 
 
     // check prime validity -- i.e., if with our custom simplifications we might run into overflows
+    // TODO: also check that there are no overflows in the sigma basis computation
     let (max_row_nnz, max_col_nnz) = a.max_nnzs();
     println!("Max row nnz: {} Max col nnz: {}", max_row_nnz, max_col_nnz);
     if a.is_prime_valid(prime as u32, MyInt::max_value() as i128) {
-        println!("Prime number {} is valid, no overflows expected.", prime);
+        println!("Prime number {} is valid for sequence computation, no overflows expected.", prime);
     } else {
         // compute estimate for max prime number 
         let max_nnz = std::cmp::max(std::cmp::max(max_row_nnz, max_col_nnz), matrices::DOT_PRODUCT_CHUNK_SIZE);
@@ -476,14 +479,24 @@ fn main() {
         let d = min(a.n_cols, a.n_rows) as f32;
         max_nlen = (2.0 * d/(num_v as f32) + 4.0).floor() as usize; // 2* min(a.n_cols, a.n_rows);
     }
+    // increase to nect higher power ot two if using sigma basis
+    if num_v > 1 {
+        max_nlen = max_nlen.next_power_of_two();
+    }
 
+    // check prime validity for ntt
+    if is_prime_valid_ntt::<MySBInt>(prime as MySBInt, max_nlen) {
+        println!("Prime number {} is valid for NTT, no overflows expected.", prime);
+    } else {
+        println!("Prime number {} is not valid for NTT", prime);
+        std::process::exit(1);
+    }
 
     // Check if already done with sequence computation
     let to_be_computed = max_nlen.saturating_sub(seq[0].len());
 
     if to_be_computed == 0 {
         println!("Already computed {} sequence entries, nothing to do.", seq[0].len());
-
     } else {
         println!{"Preconditioning matrix ..."}
         // precondition matrix
@@ -555,11 +568,6 @@ fn main() {
     println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
     // println!("{:?}", bmres);
 
-    let largeprime : u128 = 9223372036737335297;  // Prime modulus
-    let root: u128 = 3;     // Primitive root of unity modulo P
-    let largeprime : u128 = 18446744069414584321; // prime with fast mod reduction 
-    let root: u128 = 7;
-
     // take for d the max power of two fitting the number of available tokens
     let mut thed = 1; //v[0].len() *2 / (num_v * num_v) + 3000; 
     while thed <= seq[0].len() {
@@ -567,8 +575,8 @@ fn main() {
     }
     thed /= 2;
     // let thed =v[0].len() *2 / (num_v * num_v) + 3000; 
-    let (pmb, del) = PM_Basis(&seq, thed, prime, largeprime, root);
-    analyze_pm_basis(&pmb, &del, prime as u128);
+    let (pmb, del) = PM_Basis(&seq, thed, prime);
+    analyze_pm_basis(&pmb, &del, prime as MySBInt);
 
 
     // let delta = v[0].len() *2; // seq[0].len()-2;
