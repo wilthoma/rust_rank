@@ -5,6 +5,8 @@
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::{self, BufRead};
+use std::simd::simd_swizzle;
+use std::vec;
 use rand::Rng;
 // use std::cmp::{Ordering, min};
 use std::iter::Sum;
@@ -16,6 +18,7 @@ use std::ops::{Add, Sub, AddAssign, SubAssign, Mul, Rem, MulAssign, Div, DivAssi
 use num_traits::{One, Zero};
 use rand::distr::uniform::SampleUniform;
 use std::fmt::Display;
+use itertools::Itertools; // Import Itertools for the `chunks` method
 
 // use std::alloc::{alloc_zeroed, Layout};
 // use std::ptr::NonNull;
@@ -153,6 +156,168 @@ Copy + Rem<Output = T> + AddAssign + Zero + Sum<T> + Mul<Output = T> + Add<Outpu
         })
         .sum::<T>() % theprime
 }
+
+pub fn dot_product_simd<T, const LANES : usize>(
+    vec1: &[Simd<T, LANES>],
+    vec2: &[Simd<T, LANES>],
+    theprime: T,
+) -> Simd<T, LANES>
+where
+    T: GoodInteger,
+    Simd<T, LANES> : GoodSimd,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
+    vec1.iter().zip(vec2.iter())
+    .chunks(DOT_PRODUCT_CHUNK_SIZE)
+    .into_iter()
+    .map(|chunk| {
+        chunk.fold(Simd::splat(T::zero()), |acc, (&x, &y)| acc + (x * y)) % Simd::splat(theprime)
+    }).fold(Simd::splat(T::zero()), |acc, x| acc + x ) % Simd::splat(theprime)
+}
+
+
+pub trait Rotateme
+{
+    fn rotate(self) -> Self;
+}
+
+macro_rules! impl_rotate_simd {
+    ($lanes:literal, [$($idx:expr),*]) => {
+        impl<T: GoodInteger> Rotateme for Simd<T, $lanes> {
+            fn rotate(self) -> Simd<T, $lanes> {
+                simd_swizzle!(self, [$($idx),*])
+            }
+        }
+    };
+}
+
+impl_rotate_simd!(1, [0]);
+impl_rotate_simd!(2, [1, 0]);
+impl_rotate_simd!(4, [1, 2, 3, 0]);
+impl_rotate_simd!(8, [1, 2, 3, 4, 5, 6, 7, 0]);
+impl_rotate_simd!(16, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0]);
+
+pub fn rotate_simd_vect<T, const LANES:usize>(
+    vect: &[Simd<T, LANES>],
+) -> Vec<Simd<T, LANES>>
+where
+    T: GoodInteger,
+    Simd<T, LANES> : GoodSimd + Rotateme,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    vect.iter()
+        .map(|&x| x.rotate())
+        .collect()
+}
+
+pub fn rotate_simd_vect_in<T, const LANES:usize>(
+    vect: &mut Vec<Simd<T, LANES>>,
+)
+where
+    T: GoodInteger,
+    Simd<T, LANES> : GoodSimd + Rotateme,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    for i in 0..vect.len() {
+        vect[i] = vect[i].rotate();
+    }
+}
+
+pub fn dot_products_simd<T, const LANES : usize>(
+    vec1: &Vec<Simd<T, LANES>>,
+    vec2: &Vec<Simd<T, LANES>>,
+    theprime: T,
+) -> [[T; LANES]; LANES]
+where
+    T: GoodInteger,
+    Simd<T, LANES> : GoodSimd + Rotateme,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    assert_eq!(vec1.len(), vec2.len(), "Vectors must have the same length.");
+    let mut result = [[T::zero(); LANES]; LANES];
+    let mut preresult = [Simd::splat(T::zero()); LANES];
+
+    preresult[0] = dot_product_simd(&vec1, &vec2, theprime);
+    let mut v2rot = vec2.clone();
+    for i in 1..LANES {
+        rotate_simd_vect_in(&mut v2rot);
+        preresult[i] = dot_product_simd(&vec1, &v2rot, theprime);
+    }
+
+    // extract dot products from preresult
+    for i in 0..LANES {
+        let s = preresult[i].to_array();
+        for j in 0..LANES {
+            result[j][(i+j)%LANES] = s[j];
+        }
+    }
+    result
+}
+
+pub fn dot_products_all_simd<T, const LANES : usize>(
+    vects: &Vec<Vec<Simd<T, LANES>>>,
+    theprime: T,
+) -> Vec<T>
+where
+    T: GoodInteger,
+    Simd<T, LANES> : GoodSimd + Rotateme,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    let m = vects.len();
+    let num_v = m * LANES;
+
+    // compute all products
+    let mut prods_simd = vec![vec![ [[T::zero();LANES];LANES]; m]; m];
+    for i in 0..m {
+        for j in i..m {
+            prods_simd[i][j] = dot_products_simd(&vects[i], &vects[j], theprime);
+            prods_simd[j][i] = prods_simd[i][j];
+        }
+    }
+
+    // extract individual dot products from the simd versions
+    let mut ret = vec![T::zero(); num_v * (num_v+1)/2];
+    let mut ii = 0;
+    for i in 0..num_v {
+        for j in i..num_v {
+            ret[ii] = prods_simd[i/LANES][j/LANES][i%LANES][j%LANES];
+            ii += 1;
+        }
+    }
+    ret
+}
+
+pub fn dot_products_all_std<T, const LANES : usize>(
+    vects: &Vec<Vec<Simd<T, LANES>>>,
+    theprime: T,
+) -> Vec<T>
+where
+    T: GoodInteger,
+    Simd<T, LANES> : GoodSimd + Rotateme,
+    LaneCount<LANES>: SupportedLaneCount,
+{
+    let m = vects.len();
+    let num_v = m * LANES;
+
+    // unzip all SIMD vectors
+    let unzipped = vects.iter().flat_map(|v| unzip_simd_vector(v)).collect::<Vec<_>>();
+    
+    // compute pairwise dot products
+    let mut ii = 0;
+    let mut ret = vec![T::zero(); num_v * (num_v+1)/2];
+    for i in 0..num_v {
+        for j in i..num_v {
+            let vec1 = &unzipped[i];
+            let vec2 = &unzipped[j];
+
+            ret[ii] = dot_product_mod_p_serial(vec1, vec2, theprime);
+            ii += 1;
+        }
+    }
+    ret
+}
+
 
 pub fn create_random_vector<T>(length: usize, theprime: T) -> Vec<T> 
 where T : Zero + SampleUniform + PartialOrd + Copy , 
@@ -722,5 +887,56 @@ impl CsrMatrix<u16> {
     }
     pub fn tou16(&self) -> CsrMatrix<u16> {
         self.clone()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dot_products_all_simd_vs_std() {
+        const LANES: usize = 4;
+        const VECTOR_LENGTH: usize = 1000;
+        const THE_PRIME: u32 = 27644437;
+
+        // Generate random SIMD vectors
+        let vects: Vec<Vec<Simd<u32, LANES>>> = (0..10)
+            .map(|_| create_random_vector_simd(VECTOR_LENGTH, THE_PRIME))
+            .collect();
+
+        // Compute dot products using both methods
+        let simd_result = dot_products_all_simd(&vects, THE_PRIME);
+        let std_result = dot_products_all_std(&vects, THE_PRIME);
+
+        // Assert that both results are the same
+        assert_eq!(simd_result, std_result, "Results from SIMD and standard methods do not match.");
+    }
+
+    #[test]
+    fn benchmark_dot_products_all() {
+        return; // Skip this test for now
+        const LANES: usize = 4;
+        const VECTOR_LENGTH: usize = 10000000;
+        const THE_PRIME: u32 = 27644437;
+
+        // Generate random SIMD vectors
+        let vects: Vec<Vec<Simd<u32, LANES>>> = (0..10)
+            .map(|_| create_random_vector_simd(VECTOR_LENGTH, THE_PRIME))
+            .collect();
+
+        // Benchmark standard method
+        let start_std = Instant::now();
+        let _std_result = dot_products_all_std(&vects, THE_PRIME);
+        let duration_std = start_std.elapsed();
+        println!("Standard method took: {:?}", duration_std);
+
+        // Benchmark SIMD method
+        let start_simd = Instant::now();
+        let _simd_result = dot_products_all_simd(&vects, THE_PRIME);
+        let duration_simd = start_simd.elapsed();
+        println!("SIMD method took: {:?}", duration_simd);
+
     }
 }

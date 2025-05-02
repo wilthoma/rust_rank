@@ -130,46 +130,46 @@ pub fn main_loop_s_mt2<T:GoodInteger, S:VectorStream<T>>(
         // let start_time = std::time::Instant::now();
     
 
-        // let dotps = (0..num_v).into_iter()
-        // .flat_map(move |i| (i..num_v).into_iter().map(move |j| (i, j)))
-        // .collect::<Vec<(usize, usize)>>().par_iter().map(|(i, j)| {
-        //     let vec1 = &received_tokens[*i];
-        //     let vec1_prev = &curv[*i];
-        //     let vec2 = &received_tokens[*j];
+        let dotps = (0..num_v).into_iter()
+        .flat_map(move |i| (i..num_v).into_iter().map(move |j| (i, j)))
+        .collect::<Vec<(usize, usize)>>().par_iter().map(|(i, j)| {
+            let vec1 = &received_tokens[*i];
+            let vec1_prev = &curv[*i];
+            let vec2 = &received_tokens[*j];
 
-        //     if use_vecp_parallel {
-        //         (dot_product_mod_p_parallel(vec1_prev, vec2, theprime), dot_product_mod_p_parallel(vec1, vec2, theprime))
-        //     }
-        //     else {
-        //         (dot_product_mod_p_serial(vec1_prev, vec2, theprime), dot_product_mod_p_serial(vec1, vec2, theprime))
-        //     }
-        // }).collect::<Vec<_>>();
-
-        // for (ii, (dot1, dot2)) in dotps.into_iter().enumerate() {
-        //     seq[ii].push(dot1);
-        //     seq[ii].push(dot2);
-        // }
-
-
-        let mut ii = 0;
-        for i in 0..num_v {
-            for j in i..num_v {
-
-                let vec1 = &received_tokens[i];
-                let vec1_prev = &curv[i];
-                let vec2 = &received_tokens[j];
-
-                if use_vecp_parallel {
-                    seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprime));
-                    seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
-                }
-                else {
-                    seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprime));
-                    seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprime));
-                }
-                ii += 1;
+            if use_vecp_parallel {
+                (dot_product_mod_p_parallel(vec1_prev, vec2, theprime), dot_product_mod_p_parallel(vec1, vec2, theprime))
             }
+            else {
+                (dot_product_mod_p_serial(vec1_prev, vec2, theprime), dot_product_mod_p_serial(vec1, vec2, theprime))
+            }
+        }).collect::<Vec<_>>();
+
+        for (ii, (dot1, dot2)) in dotps.into_iter().enumerate() {
+            seq[ii].push(dot1);
+            seq[ii].push(dot2);
         }
+
+
+        // let mut ii = 0;
+        // for i in 0..num_v {
+        //     for j in i..num_v {
+
+        //         let vec1 = &received_tokens[i];
+        //         let vec1_prev = &curv[i];
+        //         let vec2 = &received_tokens[j];
+
+        //         if use_vecp_parallel {
+        //             seq[ii].push(dot_product_mod_p_parallel(vec1_prev, vec2, theprime));
+        //             seq[ii].push(dot_product_mod_p_parallel(vec1, vec2, theprime));
+        //         }
+        //         else {
+        //             seq[ii].push(dot_product_mod_p_serial(vec1_prev, vec2, theprime));
+        //             seq[ii].push(dot_product_mod_p_serial(vec1, vec2, theprime));
+        //         }
+        //         ii += 1;
+        //     }
+        // }
 
         // println!("Time taken for dot product computations: {:?}\n", start_time.elapsed());
 

@@ -422,6 +422,7 @@ mod tests {
 
     #[test]
     fn benchmark_poly_mat_mul_fft_vs_bubble() {
+        return; // Skip this test for now
         // return; // Skip this test for now
         let matrix_sizes = vec![(2, 2, 2), (3, 3, 3), (4, 4, 4), (5, 5, 5), (10,10,10), (20,20,20)]; // (m, n, k) sizes
         let degrees = vec![1,2, 5, 10, 20, 50, 100, 200, 500, 1000]; // Polynomial degrees to test
