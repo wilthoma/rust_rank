@@ -43,7 +43,7 @@ pub trait ModMul : Add<Output=Self> + DivAssign + Sub<Output=Self> + Mul<Output=
     
     #[inline(always)]
     fn invmod(self) -> Self {
-        let two = T::one() + T::one();
+        let two = Self::one() + Self::one();
         self.powmod(Self::PRIME - two)
     }
 
@@ -53,7 +53,7 @@ impl ModMul for u32 {
     const ROOT : u32 = 31;
     #[inline(always)]
     fn mulmod(self, other: Self) -> Self {
-        (self * other) % Self::PRIME
+        ((self as u64 * other as u64) % Self::PRIME as u64) as u32
     }
 
 }
@@ -191,7 +191,7 @@ pub fn ntt<T : NTTInteger>(a: &mut [T], invert: bool) {
             let (left, right) = chunk.split_at_mut(len/2);
             for (l, r) in left.iter_mut().zip(right.iter_mut()) {
                 let u = *l;
-                let v = mod_mul(*r, w, p);
+                let v = (*r).mulmod(w);
                 *l = u.addmod(v);
                 *r = u.submod(v);
                 w = w.mulmod(wlen);

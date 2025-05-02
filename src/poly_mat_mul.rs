@@ -2,7 +2,7 @@ use bubblemath::linear_recurrence::poly_mul;
 // use num_traits::Zero;
 // use rayon::iter::IntoParallelIterator;
 
-use crate::{ntt::{matrix_ntt_parallel, mod_add, mod_mul, ntt, NTTInteger}, polynomial};
+use crate::{ntt::{matrix_ntt_parallel, mod_add, mod_mul, ntt, NTTInteger, ModMul}, polynomial};
 use rand::Rng;
 use std::{cmp::min, time::Duration};
 use once_cell::sync::Lazy;
@@ -148,13 +148,13 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
     }
     // compute ffts
     let start = Instant::now();
-    matrix_ntt_parallel(&mut fa, false, p, root);
+    matrix_ntt_parallel(&mut fa, false);
     // for i in 0..m {
     //     for j in 0..n {
     //         ntt(&mut fa[i][j], false, p, root);
     //     }
     // }
-    matrix_ntt_parallel(&mut fb, false, p, root);
+    matrix_ntt_parallel(&mut fb, false);
     let mut durationntt = start.elapsed();
     // for i in 0..n {
     //     for j in 0..k {
@@ -170,7 +170,7 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
         row.par_iter_mut().enumerate().for_each(|(j, cell)| {
             for r in 0..n {
                 for l in 0..nlenres_adj {
-                    cell[l] = mod_add(cell[l], mod_mul(fa[i][r][l], fb[r][j][l], p), p);
+                    cell[l] = cell[l].addmod(fa[i][r][l].mulmod(fb[r][j][l]));
                 }
             }
         });
@@ -189,7 +189,7 @@ pub fn poly_mat_mul_fft<T : NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>
     let durationmul = start.elapsed();
     // compute iffts qnd resize result
     let start = Instant::now();
-    matrix_ntt_parallel(&mut fresult, true, p, root);
+    matrix_ntt_parallel(&mut fresult, true);
     durationntt += start.elapsed();
 
     {
@@ -339,19 +339,23 @@ mod tests {
         let poly_len_a = 3; // Length of polynomials in matrix A
         let poly_len_b = 3; // Length of polynomials in matrix B
         let max_value = 500000u64; // Maximum value for random coefficients
-        let p = 998244353; // A large prime modulus
+        let p = u64::PRIME; // A large prime modulus
         let root = 3; // Primitive root for NTT
 
         // Generate random input matrices
         let a = generate_random_matrix(m, n, poly_len_a, max_value);
         let b = generate_random_matrix(n, k, poly_len_b, max_value);
+        let a128 = a.iter().map(|row| row.iter().map(|poly| poly.iter().map(|&x| x as u128).collect()).collect()).collect::<Vec<Vec<Vec<u128>>>>();
+        let b128 = b.iter().map(|row| row.iter().map(|poly| poly.iter().map(|&x| x as u128).collect()).collect()).collect::<Vec<Vec<Vec<u128>>>>();
 
         // Compute results using both methods
-        let result_bubble = poly_mat_mul_bubble(&a, &b, p);
+        // we need to use bubble for u128 to avoid overflow. u64 bubble assumes all values are <2^32
+        let result_bubble = poly_mat_mul_bubble(&a128, &b128, p as u128);
         let result_fft = poly_mat_mul_fft(&a, &b, p, root, 0, poly_len_b);
 
         // Assert that the results are the same
-        assert_eq!(result_bubble, result_fft, "Results from poly_mat_mul_bubble and poly_mat_mul_fft do not match");
+        let result_bubble64 = result_bubble.iter().map(|row| row.iter().map(|poly| poly.iter().map(|&x| x as u64).collect()).collect()).collect::<Vec<Vec<Vec<u64>>>>();
+        assert_eq!(result_bubble64, result_fft, "Results from poly_mat_mul_bubble and poly_mat_mul_fft do not match");
     }
 
     #[test]
