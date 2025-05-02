@@ -338,9 +338,9 @@ mod tests {
         let k = 6; // Number of columns in matrix B
         let poly_len_a = 3; // Length of polynomials in matrix A
         let poly_len_b = 3; // Length of polynomials in matrix B
-        let max_value = 500000u64; // Maximum value for random coefficients
         let p = u64::PRIME; // A large prime modulus
         let root = 3; // Primitive root for NTT
+        let max_value = p-1; // Maximum value for random coefficients
 
         // Generate random input matrices
         let a = generate_random_matrix(m, n, poly_len_a, max_value);
