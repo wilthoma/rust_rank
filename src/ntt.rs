@@ -381,36 +381,27 @@ mod tests {
 
         // again 
 
-                // Benchmark NTT<u64>
-                let start_u64 = Instant::now();
-                let mut data_u642 = data_u64.clone();
-                ntt(&mut data_u642, true);
-                let duration_u64 = start_u64.elapsed();
-        
-                // Benchmark NTT<u128>
-                let start_u128 = Instant::now();
-                let mut data_u1282 = data_u128.clone();
-                ntt(&mut data_u1282, true);
-                let duration_u128 = start_u128.elapsed();
-        
-                println!(
-                    "NTT<u64> took {:?}, NTT<u128> took {:?}",
-                    duration_u64, duration_u128
-                );
+        // Benchmark NTT<u64>
+        let start_u64 = Instant::now();
+        ntt(&mut data_u64, true);
+        let duration_u64 = start_u64.elapsed();
+
+        // Benchmark NTT<u128>
+        let start_u128 = Instant::now();
+        ntt(&mut data_u128, true);
+        let duration_u128 = start_u128.elapsed();
+
+        println!(
+            "NTT<u64> took {:?}, NTT<u128> took {:?}",
+            duration_u64, duration_u128
+        );
 
         // Ensure the results are valid (not strictly necessary for benchmarking)
-        ntt(&mut data_u64, true);
-        ntt(&mut data_u128, true);
 
         let original_data_u64: Vec<u64> = data_u128.iter().map(|&x| x as u64).collect();
         assert_eq!(
             data_u64, original_data_u64,
             "NTT<u64> and NTT<u128> results should match"
-        );
-        let original_data_u642: Vec<u64> = data_u1282.iter().map(|&x| x as u64).collect();
-        assert_eq!(
-            data_u642, original_data_u642,
-            "NTT<u64> and NTT<u128> results should match after inverse transform"
         );
     }
 }

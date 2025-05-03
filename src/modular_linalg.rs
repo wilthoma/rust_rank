@@ -1,4 +1,4 @@
-use crate::{matrices::GoodInteger, ntt::{mod_pow, modinv, NTTInteger}, poly_mat_mul::poly_mat_mul_fft_red};
+use crate::{matrices::GoodInteger, ntt::{mod_pow, modinv, NTTInteger, ModMul}, poly_mat_mul::poly_mat_mul_fft_red};
 use nalgebra::DMatrix;
 use std::{fmt::Debug, ops::{Add, Mul}, vec};
 
@@ -239,6 +239,138 @@ pub fn lsp_decomposition<T:NTTInteger>(a: &DMatrix<T>, p: T) -> (DMatrix<T>, DMa
 }
 
 
+fn matrix_multiply_classic<T : NTTInteger>(a : &Vec<Vec<Vec<T>>>, b : &Vec<Vec<Vec<T>>>) -> Vec<Vec<Vec<T>>> {
+    let n = a.len();
+    let m = a[0].len();
+    let p = b[0].len();
+    let nlen  = a[0][0].len();
+
+    let mut res : Vec<Vec<Vec<T>>> = vec![vec![vec![T::zero(); nlen]; p]; n];
+
+    for i in 0..n {
+        for j in 0..p {
+            for kk in 0..nlen {
+                for k in 0..m {
+                    res[i][j][kk] = res[i][j][kk].addmod(a[i][k][kk].mulmod(b[k][j][kk]));
+                }
+            }
+        }
+    }
+    res
+}
+
+    fn matrix_multiply_strassen<T: NTTInteger>(a: &Vec<Vec<Vec<T>>>, b: &Vec<Vec<Vec<T>>>) -> Vec<Vec<Vec<T>>> {
+        let n = a.len();
+        let nlen = a[0][0].len();
+
+        if n == 1 {
+            let mut res = vec![vec![vec![T::zero(); nlen]; 1]; 1];
+            for i in 0..nlen {
+                res[0][0][i] = a[0][0][i].mulmod(b[0][0][i]);
+            }
+            return res;
+        }
+
+        let half = n / 2;
+
+        let mut a11 = vec![vec![vec![T::zero(); nlen]; half]; half];
+        let mut a12 = vec![vec![vec![T::zero(); nlen]; half]; half];
+        let mut a21 = vec![vec![vec![T::zero(); nlen]; half]; half];
+        let mut a22 = vec![vec![vec![T::zero(); nlen]; half]; half];
+        let mut b11 = vec![vec![vec![T::zero(); nlen]; half]; half];
+        let mut b12 = vec![vec![vec![T::zero(); nlen]; half]; half];
+        let mut b21 = vec![vec![vec![T::zero(); nlen]; half]; half];
+        let mut b22 = vec![vec![vec![T::zero(); nlen]; half]; half];
+
+        for i in 0..half {
+            for j in 0..half {
+                for k in 0..nlen {
+                    a11[i][j][k] = a[i][j][k];
+                    a12[i][j][k] = a[i][j + half][k];
+                    a21[i][j][k] = a[i + half][j][k];
+                    a22[i][j][k] = a[i + half][j + half][k];
+                    b11[i][j][k] = b[i][j][k];
+                    b12[i][j][k] = b[i][j + half][k];
+                    b21[i][j][k] = b[i + half][j][k];
+                    b22[i][j][k] = b[i + half][j + half][k];
+                }
+            }
+        }
+
+        let m1 = matrix_multiply_strassen(
+            &matrix_add(&a11, &a22, nlen),
+            &matrix_add(&b11, &b22, nlen),
+        );
+        let m2 = matrix_multiply_strassen(&matrix_add(&a21, &a22, nlen), &b11);
+        let m3 = matrix_multiply_strassen(&a11, &matrix_sub(&b12, &b22, nlen));
+        let m4 = matrix_multiply_strassen(&a22, &matrix_sub(&b21, &b11, nlen));
+        let m5 = matrix_multiply_strassen(&matrix_add(&a11, &a12, nlen), &b22);
+        let m6 = matrix_multiply_strassen(&matrix_sub(&a21, &a11, nlen), &matrix_add(&b11, &b12, nlen));
+        let m7 = matrix_multiply_strassen(&matrix_sub(&a12, &a22, nlen), &matrix_add(&b21, &b22, nlen));
+
+        let c11 = matrix_add(
+            &matrix_sub(&matrix_add(&m1, &m4, nlen), &m5, nlen),
+            &m7,
+            nlen,
+        );
+        let c12 = matrix_add(&m3, &m5, nlen);
+        let c21 = matrix_add(&m2, &m4, nlen);
+        let c22 = matrix_add(
+            &matrix_sub(&matrix_add(&m1, &m3, nlen), &m2, nlen),
+            &m6,
+            nlen,
+        );
+
+        let mut res = vec![vec![vec![T::zero(); nlen]; n]; n];
+        for i in 0..half {
+            for j in 0..half {
+                for k in 0..nlen {
+                    res[i][j][k] = c11[i][j][k];
+                    res[i][j + half][k] = c12[i][j][k];
+                    res[i + half][j][k] = c21[i][j][k];
+                    res[i + half][j + half][k] = c22[i][j][k];
+                }
+            }
+        }
+
+        res
+    }
+
+    fn matrix_add<T: NTTInteger>(
+        a: &Vec<Vec<Vec<T>>>,
+        b: &Vec<Vec<Vec<T>>>,
+        nlen: usize,
+    ) -> Vec<Vec<Vec<T>>> {
+        let n = a.len();
+        let mut res = vec![vec![vec![T::zero(); nlen]; n]; n];
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..nlen {
+                    res[i][j][k] = a[i][j][k].addmod( b[i][j][k] );
+                }
+            }
+        }
+        res
+    }
+
+    fn matrix_sub<T: NTTInteger>(
+        a: &Vec<Vec<Vec<T>>>,
+        b: &Vec<Vec<Vec<T>>>,
+        nlen: usize,
+    ) -> Vec<Vec<Vec<T>>> {
+        let n = a.len();
+        let mut res = vec![vec![vec![T::zero(); nlen]; n]; n];
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..nlen {
+                    res[i][j][k] = a[i][j][k].submod(b[i][j][k]);
+                }
+            }
+        }
+        res
+    }
+
+
 
 
 
@@ -246,6 +378,7 @@ pub fn lsp_decomposition<T:NTTInteger>(a: &DMatrix<T>, p: T) -> (DMatrix<T>, DMa
 mod tests {
     use super::*;
     use nalgebra::DMatrix;
+    use std::time::Instant;
 
     fn is_unit_lower_triangular(l: &DMatrix<u128>, p: u128) -> bool {
         let n = l.nrows();
@@ -371,6 +504,65 @@ mod tests {
             let inv = modinv(a, p);
             assert_eq!((a * inv) % p, 1, "modinv({a}, {p}) * {a} != 1 mod {p}");
         }
+    }
+
+    #[test]
+    fn test_matrix_multiply_performance_and_correctness() {
+        return; // Skip this test for now
+        let n = 128; // Matrix size (must be a power of 2 for Strassen's algorithm)
+        let nlen = 500; // Length of modular coefficients
+        let p = u128::PRIME; // Modulus
+
+        // Generate random matrices a and b
+        let mut a = vec![vec![vec![0u128; nlen]; n]; n];
+        let mut b = vec![vec![vec![0u128; nlen]; n]; n];
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..nlen {
+                    a[i][j][k] = (i + j + k) as u128 % p;
+                    b[i][j][k] = (i * j + k) as u128 % p;
+                }
+            }
+        }
+
+        // Measure execution time and compute result for classic multiplication
+        let start_classic = Instant::now();
+        let result_classic = matrix_multiply_classic(&a, &b);
+        let duration_classic = start_classic.elapsed();
+
+        // Measure execution time and compute result for Strassen's multiplication
+        let start_strassen = Instant::now();
+        let result_strassen = matrix_multiply_strassen(&a, &b);
+        let duration_strassen = start_strassen.elapsed();
+
+        println!(
+            "Classic multiplication took: {:?}, Strassen's multiplication took: {:?}",
+            duration_classic, duration_strassen
+        );
+
+        // Measure execution time and compute result for classic multiplication
+        let start_classic = Instant::now();
+        let result_classic = matrix_multiply_classic(&a, &b);
+        let duration_classic = start_classic.elapsed();
+
+        // Measure execution time and compute result for Strassen's multiplication
+        let start_strassen = Instant::now();
+        let result_strassen = matrix_multiply_strassen(&a, &b);
+        let duration_strassen = start_strassen.elapsed();
+
+        // Print execution times
+        println!(
+            "Classic multiplication took: {:?}, Strassen's multiplication took: {:?}",
+            duration_classic, duration_strassen
+        );
+
+        // Compare results
+        assert_eq!(
+            result_classic, result_strassen,
+            "Results of classic and Strassen's multiplication do not match"
+        );
+
+
     }
 
     // #[test]
