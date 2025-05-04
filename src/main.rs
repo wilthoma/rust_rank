@@ -63,6 +63,7 @@ pub fn report_progress(
     last_nlen: usize,
     nlen: usize,
     max_nlen: usize,
+    num_v : usize,
     suffix: &str,
 ) {
     let elapsed = start_time.elapsed();
@@ -70,11 +71,12 @@ pub fn report_progress(
     let speed = (nlen - last_nlen) as f64 / elapsed_last.as_secs_f64();
     let remaining = (max_nlen - nlen) as f64 / speed;
     print!(
-        "\rProgress: {}/{} | Elapsed: {:?} | Throughput: {:.2}/s | Remaining: {:?} | {}           ",
+        "\rProgress: {}/{} | Elapsed: {:?} | Throughput: {:.2}/s (total {:.2}/s) | Remaining: {:?} | {}           ",
         nlen,
         max_nlen,
         elapsed,
         speed,
+        speed * num_v as f64,
         std::time::Duration::from_secs_f64(remaining),
         suffix
     );
@@ -201,7 +203,7 @@ pub fn main_loop_s_mt2<T:GoodInteger, S:VectorStream<T>>(
         if last_report.elapsed().as_secs_f64() > REPORT_AFTER {
             // println!("Report");
             let fill_status = stream.fill_status();
-            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, &format!("Channel fill status {}", fill_status));
+            report_progress(start, last_report, last_nlen, seq[0].len(), max_nlen, num_v, &format!("Channel fill status {}", fill_status));
             last_report = std::time::Instant::now();
             last_nlen = seq[0].len();
         }
@@ -522,22 +524,22 @@ fn main() {
                 &wdm_filename, prime, save_after, parallel_dot);
         } else if lanes == 2{
             // we use simd 
-            let mut stream: SimdVectorStream<MyInt, 2> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            let mut stream: SimdVectorStream2<MyInt, 2> = SimdVectorStream2::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
             err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
                 &wdm_filename, prime, save_after, parallel_dot);
         } else if lanes == 4{
             // we use simd 
-            let mut stream: SimdVectorStream<MyInt, 4> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            let mut stream: SimdVectorStream2<MyInt, 4> = SimdVectorStream2::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
             err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
                 &wdm_filename, prime, save_after, parallel_dot);
         } else if lanes == 8{
             // we use simd 
-            let mut stream: SimdVectorStream<MyInt, 8> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            let mut stream: SimdVectorStream2<MyInt, 8> = SimdVectorStream2::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
             err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
                 &wdm_filename, prime, save_after, parallel_dot);
         } else if lanes == 16{
             // we use simd 
-            let mut stream: SimdVectorStream<MyInt, 16> = SimdVectorStream::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
+            let mut stream: SimdVectorStream2<MyInt, 16> = SimdVectorStream2::new(&a, &at, &curv, prime, to_be_computed/2, !serial_matvmul, deep_clone);
             err = main_loop_s_mt2(&mut stream, &a, &row_precond, &col_precond, &mut curv, &v, &mut seq, max_nlen, 
                 &wdm_filename, prime, save_after, parallel_dot);
         } else {
