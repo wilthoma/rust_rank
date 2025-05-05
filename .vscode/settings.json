@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.sage": "python",
-        "matrices.C": "cpp"
+        "matrices.C": "cpp",
+        "cutest.C": "cpp"
     }
 }
