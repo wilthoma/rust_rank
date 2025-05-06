@@ -296,7 +296,8 @@ mod tests {
 fn test_csr_dense_mult_with_sms() {
     // Load CSR matrix from SMS file
     let p = 257u32;
-    let csr = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_10.txt", p).unwrap();
+    let csr = CsrMatrix::load_csr_matrix_from_sms("/r/scratch/users/wilthoma/gh_data/data/ordinary/odd_edges/contractD12_10.txt", p).unwrap();
+    // let csr = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_10.txt", p).unwrap();
     let csrt = csr.transpose();
     let n_vecs = 16;
 
