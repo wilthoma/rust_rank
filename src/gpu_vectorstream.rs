@@ -302,15 +302,13 @@ fn test_csr_dense_mult_with_sms() {
     // let csr = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_10.txt", p).unwrap();
     
     let csrt = csr.transpose();
-    let n_vecs = 16;
+    let n_vecs = 64;
 
     println!("CSR Matrix loaded with {} rows and {} columns", csr.n_rows, csr.n_cols);
 
     // Create a dense matrix B
     let mut rng = rand::rng();
     let b: Vec<u32> = (0..csr.n_cols * n_vecs).map(|_| rng.random_range(0..p)).collect();
-
-    let n_vecs = 64;
 
     // Measure execution time
     let start = Instant::now();
