@@ -115,14 +115,43 @@ int main(int argc, char** argv) {
     CHECK_CUSPARSE(cusparseCreateDnMat(&matC, numRows, denseCols, denseCols,
                                        d_result, CUDA_R_32F, CUSPARSE_ORDER_ROW));
 
-    float alpha = 1.0f, beta = 0.0f;
-    size_t bufferSize = 0;
-    void* dBuffer = nullptr;
+    // float alpha = 1.0f, beta = 0.0f;
+    // size_t bufferSize = 0;
+    // void* dBuffer = nullptr;
 
-    CHECK_CUSPARSE(cusparseSpMM_bufferSize(
-        handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize));
+    // CHECK_CUSPARSE(cusparseSpMM_bufferSize(
+    //     handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+    //     &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize));
+    // CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
+
+    float alpha = 1.0f, beta = 0.0f;
+float *d_alpha, *d_beta;
+CHECK_CUDA(cudaMalloc(&d_alpha, sizeof(float)));
+CHECK_CUDA(cudaMalloc(&d_beta, sizeof(float)));
+CHECK_CUDA(cudaMemcpy(d_alpha, &alpha, sizeof(float), cudaMemcpyHostToDevice));
+CHECK_CUDA(cudaMemcpy(d_beta, &beta, sizeof(float), cudaMemcpyHostToDevice));
+
+size_t bufferSize = 0;
+void* dBuffer = nullptr;
+
+CHECK_CUSPARSE(cusparseSpMM_bufferSize(
+    handle,
+    CUSPARSE_OPERATION_NON_TRANSPOSE,
+    CUSPARSE_OPERATION_NON_TRANSPOSE,
+    d_alpha,
+    matA,
+    matB,
+    d_beta,
+    matC,
+    CUDA_R_32F,
+    CUSPARSE_SPMM_ALG_DEFAULT,
+    &bufferSize));
+
+if (bufferSize > 0) {
     CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
+} else {
+    std::cout << "Buffer size is zero, hmmmmmm....." << std::endl;
+}
 
     std::cout << "Running computation ... " << std::endl;
     cudaEvent_t start, stop;
@@ -132,7 +161,7 @@ int main(int argc, char** argv) {
     CHECK_CUDA(cudaEventRecord(start));
     CHECK_CUSPARSE(cusparseSpMM(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, d_buffer));
+        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
         // cusparseSpMM(
         //     handle,
         //     CUSPARSE_OPERATION_NON_TRANSPOSE,
