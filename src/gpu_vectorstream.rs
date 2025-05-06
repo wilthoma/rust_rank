@@ -310,7 +310,7 @@ fn test_csr_dense_mult_with_sms() {
     let mut rng = rand::rng();
     let b: Vec<u32> = (0..csr.n_cols * n_vecs).map(|_| rng.random_range(0..p)).collect();
 
-    let n_vecs = 4;
+    let n_vecs = 64;
 
     // Measure execution time
     let start = Instant::now();
