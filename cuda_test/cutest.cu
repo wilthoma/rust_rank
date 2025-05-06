@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
         &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
     CHECK_CUDA(cudaEventRecord(stop));
 
-    CHECK_CUDA(cudaEventSynchronize(stop));
+    //CHECK_CUDA(cudaEventSynchronize(stop));
     float milliseconds = 0;
     CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
 
