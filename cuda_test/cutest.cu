@@ -1,211 +1,160 @@
-#include <cuda_runtime.h>
-#include <cusparse.h>
-
 #include <iostream>
-#include <fstream>
-#include <sstream>
 #include <vector>
-#include <cstdlib>
 #include <cassert>
+#include <cusparse.h>
+#include <cuda_runtime.h>
 
-#define CHECK_CUDA(call) \
-    if ((call) != cudaSuccess) { \
-        std::cerr << "CUDA error at " << __LINE__ << ": " << cudaGetErrorString(cudaGetLastError()) << std::endl; \
-        exit(EXIT_FAILURE); \
+// CUDA error checking macro
+#define CHECK_CUDA(call) { \
+    cudaError_t err = call; \
+    if (err != cudaSuccess) { \
+        std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl; \
+        exit(-1); \
+    } \
+}
+
+// cuSPARSE error checking macro
+#define CHECK_CUSPARSE(call) { \
+    cusparseStatus_t err = call; \
+    if (err != CUSPARSE_STATUS_SUCCESS) { \
+        std::cerr << "cuSPARSE error: " << err << std::endl; \
+        exit(-1); \
+    } \
+}
+
+void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<float>& values, int& numRows, int& numCols, int& nnz) {
+    std::ifstream file(filename);
+    if (!file) {
+        std::cerr << "Failed to open file: " << filename << std::endl;
+        exit(-1);
     }
 
-#define CHECK_CUSPARSE(call) \
-    if ((call) != CUSPARSE_STATUS_SUCCESS) { \
-        std::cerr << "cuSPARSE error at " << __LINE__ << std::endl; \
-        exit(EXIT_FAILURE); \
-    }
+    file >> numRows >> numCols >> nnz;
 
-int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " matrix_file.txt" << std::endl;
-        return 1;
-    }
+    rowIndices.resize(nnz);
+    colIndices.resize(nnz);
+    values.resize(nnz);
 
-    std::ifstream fin(argv[1]);
-    if (!fin) {
-        std::cerr << "Failed to open file: " << argv[1] << std::endl;
-        return 1;
-    }
-
-    std::string line;
-    // Skip comment lines
-    do {
-        std::getline(fin, line);
-    } while (!fin.eof() && line[0] == '%');
-
-    int numRows, numCols;
-    std::string marker;
-    std::istringstream(line) >> numRows >> numCols >> marker;
-
-    std::vector<int> h_rowIndices;
-    std::vector<int> h_colIndices;
-    std::vector<float> h_values;
-
-    while (std::getline(fin, line)) {
-        if (line.empty() || line[0] == '%') continue;
-        int row, col;
-        float val;
-        std::istringstream(line) >> row >> col >> val;
-        h_rowIndices.push_back(row - 1);
-        h_colIndices.push_back(col - 1);
-        h_values.push_back(val);
-    }
-    fin.close();
-
-    int nnz = h_values.size();
-
-    // Build CSR
-    std::vector<int> h_rowPtr(numRows + 1, 0);
-    for (int i = 0; i < nnz; ++i)
-        h_rowPtr[h_rowIndices[i] + 1]++;
-    for (int i = 0; i < numRows; ++i)
-        h_rowPtr[i + 1] += h_rowPtr[i];
-
-    std::vector<int> h_colInd(nnz);
-    std::vector<float> h_csrVals(nnz);
-    std::vector<int> rowOffset = h_rowPtr;
     for (int i = 0; i < nnz; ++i) {
-        int row = h_rowIndices[i];
-        int dest = rowOffset[row]++;
-        h_colInd[dest] = h_colIndices[i];
-        h_csrVals[dest] = h_values[i];
+        file >> rowIndices[i] >> colIndices[i] >> values[i];
+    }
+    file.close();
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <matrix_file>" << std::endl;
+        return -1;
     }
 
-    std::cout << "CSR matrix created with " << nnz << " non-zero elements." << std::endl;
+    // Load matrix
+    std::vector<int> rowIndices, colIndices;
+    std::vector<float> values;
+    int numRows, numCols, nnz;
+    load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
 
-    // Dense matrix B (numCols × denseCols)
-    int denseCols = 64;
+    // Random dense matrix for multiplication
+    int denseCols = 10;  // Example: Result matrix column size
     std::vector<float> h_dense(numCols * denseCols);
-    for (auto& val : h_dense)
-        val = static_cast<float>(rand()) / RAND_MAX;
+    for (int i = 0; i < numCols * denseCols; ++i) {
+        h_dense[i] = static_cast<float>(rand()) / RAND_MAX;  // Random initialization
+    }
 
-    // Device memory
-    int *d_rowPtr, *d_colInd;
-    float *d_vals, *d_dense, *d_result;
-    CHECK_CUDA(cudaMalloc((void**)&d_rowPtr, (numRows + 1) * sizeof(int)));
-    CHECK_CUDA(cudaMalloc((void**)&d_colInd, nnz * sizeof(int)));
-    CHECK_CUDA(cudaMalloc((void**)&d_vals, nnz * sizeof(float)));
-    CHECK_CUDA(cudaMalloc((void**)&d_dense, numCols * denseCols * sizeof(float)));
-    CHECK_CUDA(cudaMalloc((void**)&d_result, numRows * denseCols * sizeof(float)));
-    // CHECK_CUDA(cudaMalloc(&d_result, numRows * denseCols * sizeof(float)));
+    // Allocate device memory for input matrices and results
+    float *d_dense, *d_result, *d_rowPtr, *d_colInd, *d_csrVals;
+    CHECK_CUDA(cudaMalloc(&d_dense, numCols * denseCols * sizeof(float)));
+    CHECK_CUDA(cudaMalloc(&d_result, numRows * denseCols * sizeof(float)));
+    CHECK_CUDA(cudaMalloc(&d_rowPtr, (numRows + 1) * sizeof(int)));
+    CHECK_CUDA(cudaMalloc(&d_colInd, nnz * sizeof(int)));
+    CHECK_CUDA(cudaMalloc(&d_csrVals, nnz * sizeof(float)));
 
-    CHECK_CUDA(cudaMemcpy(d_rowPtr, h_rowPtr.data(), (numRows + 1) * sizeof(int), cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_colInd, h_colInd.data(), nnz * sizeof(int), cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_vals, h_csrVals.data(), nnz * sizeof(float), cudaMemcpyHostToDevice));
+    // Copy dense matrix and sparse matrix data to the device
     CHECK_CUDA(cudaMemcpy(d_dense, h_dense.data(), numCols * denseCols * sizeof(float), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_rowPtr, rowIndices.data(), (numRows + 1) * sizeof(int), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_colInd, colIndices.data(), nnz * sizeof(int), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_csrVals, values.data(), nnz * sizeof(float), cudaMemcpyHostToDevice));
 
-    // cuSPARSE handles
+    // Initialize cuSPARSE handle
     cusparseHandle_t handle;
     CHECK_CUSPARSE(cusparseCreate(&handle));
 
+    // Prepare cuSPARSE matrices
     cusparseSpMatDescr_t matA;
+    CHECK_CUSPARSE(cusparseCreateCsr(&matA, numRows, numCols, nnz, d_rowPtr, d_colInd, d_csrVals, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F));
+
     cusparseDnMatDescr_t matB, matC;
-    CHECK_CUSPARSE(cusparseCreateCsr(&matA, numRows, numCols, nnz,
-                                     d_rowPtr, d_colInd, d_vals,
-                                     CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-                                     CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F));
-    CHECK_CUSPARSE(cusparseCreateDnMat(&matB, numCols, denseCols, denseCols,
-                                       d_dense, CUDA_R_32F, CUSPARSE_ORDER_ROW));
-                //    cusparseCreateDnMat(&matC, numRows, denseCols, denseCols, d_result, CUDA_R_32F, CUSPARSE_ORDER_ROW);
-    CHECK_CUSPARSE(cusparseCreateDnMat(&matC, numRows, denseCols, denseCols,
-                                       d_result, CUDA_R_32F, CUSPARSE_ORDER_ROW));
+    CHECK_CUSPARSE(cusparseCreateDnMat(&matB, numCols, denseCols, denseCols, d_dense, CUDA_R_32F, CUSPARSE_ORDER_ROW));
+    CHECK_CUSPARSE(cusparseCreateDnMat(&matC, numRows, denseCols, denseCols, d_result, CUDA_R_32F, CUSPARSE_ORDER_ROW));
 
-    // float alpha = 1.0f, beta = 0.0f;
-    // size_t bufferSize = 0;
-    // void* dBuffer = nullptr;
-
-    // CHECK_CUSPARSE(cusparseSpMM_bufferSize(
-    //     handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
-    //     &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize));
-    // CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
-
+    // Set alpha and beta in device memory
     float alpha = 1.0f, beta = 0.0f;
-float *d_alpha, *d_beta;
-CHECK_CUDA(cudaMalloc(&d_alpha, sizeof(float)));
-CHECK_CUDA(cudaMalloc(&d_beta, sizeof(float)));
-CHECK_CUDA(cudaMemcpy(d_alpha, &alpha, sizeof(float), cudaMemcpyHostToDevice));
-CHECK_CUDA(cudaMemcpy(d_beta, &beta, sizeof(float), cudaMemcpyHostToDevice));
+    float *d_alpha, *d_beta;
+    CHECK_CUDA(cudaMalloc(&d_alpha, sizeof(float)));
+    CHECK_CUDA(cudaMalloc(&d_beta, sizeof(float)));
+    CHECK_CUDA(cudaMemcpy(d_alpha, &alpha, sizeof(float), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_beta, &beta, sizeof(float), cudaMemcpyHostToDevice));
 
-size_t bufferSize = 0;
-void* dBuffer = nullptr;
+    // Compute the buffer size required by cusparseSpMM
+    size_t bufferSize = 0;
+    void* dBuffer = nullptr;
+    CHECK_CUSPARSE(cusparseSpMM_bufferSize(
+        handle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        d_alpha,
+        matA,
+        matB,
+        d_beta,
+        matC,
+        CUDA_R_32F,
+        CUSPARSE_SPMM_ALG_DEFAULT,
+        &bufferSize
+    ));
 
-CHECK_CUSPARSE(cusparseSpMM_bufferSize(
-    handle,
-    CUSPARSE_OPERATION_NON_TRANSPOSE,
-    CUSPARSE_OPERATION_NON_TRANSPOSE,
-    d_alpha,
-    matA,
-    matB,
-    d_beta,
-    matC,
-    CUDA_R_32F,
-    CUSPARSE_SPMM_ALG_DEFAULT,
-    &bufferSize));
+    // Allocate buffer if needed
+    if (bufferSize > 0) {
+        CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
+    }
 
-if (bufferSize > 0) {
-    CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
-} else {
-    std::cout << "Buffer size is zero, hmmmmmm....." << std::endl;
-}
-
-    std::cout << "Running computation ... " << std::endl;
-    cudaEvent_t start, stop;
-    CHECK_CUDA(cudaEventCreate(&start));
-    CHECK_CUDA(cudaEventCreate(&stop));
-
-    CHECK_CUDA(cudaEventRecord(start));
+    // Perform sparse matrix-dense matrix multiplication
     CHECK_CUSPARSE(cusparseSpMM(
-        handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
-        // cusparseSpMM(
-        //     handle,
-        //     CUSPARSE_OPERATION_NON_TRANSPOSE,
-        //     CUSPARSE_OPERATION_NON_TRANSPOSE,
-        //     &alpha,
-        //     matA,
-        //     matB,
-        //     &beta,
-        //     matC,
-        //     CUDA_R_32F,
-        //     CUSPARSE_SPMM_ALG_DEFAULT,
-        //     d_buffer
-        // );
+        handle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        d_alpha,
+        matA,
+        matB,
+        d_beta,
+        matC,
+        CUDA_R_32F,
+        CUSPARSE_SPMM_ALG_DEFAULT,
+        dBuffer
+    ));
 
+    // Synchronize the device to ensure all computation is done
     CHECK_CUDA(cudaDeviceSynchronize());
-    CHECK_CUDA(cudaEventRecord(stop));
 
-    //CHECK_CUDA(cudaEventSynchronize(stop));
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, start, stop);
-
-    std::cout << "Computation completed in " << milliseconds << " ms." << std::endl;
-
-    CHECK_CUDA(cudaEventDestroy(start));
-    CHECK_CUDA(cudaEventDestroy(stop));
-
-    // Retrieve result
+    // Copy the result back to host
     std::vector<float> h_result(numRows * denseCols);
     CHECK_CUDA(cudaMemcpy(h_result.data(), d_result, numRows * denseCols * sizeof(float), cudaMemcpyDeviceToHost));
 
-    std::cout << "Matrix multiplication complete. First result value: " << h_result[0] << std::endl;
+    // Print a small part of the result (for debugging purposes)
+    std::cout << "Result matrix (first 5 elements):" << std::endl;
+    for (int i = 0; i < 5 && i < numRows * denseCols; ++i) {
+        std::cout << h_result[i] << " ";
+    }
+    std::cout << std::endl;
 
-    // Cleanup
-    cudaFree(d_rowPtr);
-    cudaFree(d_colInd);
-    cudaFree(d_vals);
-    cudaFree(d_dense);
-    cudaFree(d_result);
-    cudaFree(dBuffer);
+    // Clean up resources
+    CHECK_CUDA(cudaFree(d_dense));
+    CHECK_CUDA(cudaFree(d_result));
+    CHECK_CUDA(cudaFree(d_rowPtr));
+    CHECK_CUDA(cudaFree(d_colInd));
+    CHECK_CUDA(cudaFree(d_csrVals));
+    CHECK_CUDA(cudaFree(d_alpha));
+    CHECK_CUDA(cudaFree(d_beta));
+    CHECK_CUDA(cudaFree(dBuffer));
 
-    cusparseDestroySpMat(matA);
-    cusparseDestroyDnMat(matB);
-    cusparseDestroyDnMat(matC);
-    cusparseDestroy(handle);
-
+    CHECK_CUSPARSE(cusparseDestroy(handle));
     return 0;
 }
