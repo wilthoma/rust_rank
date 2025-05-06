@@ -1,4 +1,4 @@
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, wgc::pipeline};
 use crate::matrices::*;
 use bytemuck::{Pod, Zeroable};
 use std::time::Instant;
@@ -76,9 +76,18 @@ pub async fn csr_dense_mult(
     let csr_buffers = upload_csr_to_gpu(&device, &a, n_vecs);
     let csr_t_buffers = upload_csr_to_gpu(&device, &at, n_vecs);
 
+    let csr_pipeline = create_csr_pipeline(&device, &csr_buffers, &b_buf, &output_intermediate, "src/spmm_mul.wgsl");
+    let csr_t_pipeline = create_csr_pipeline(&device, &csr_t_buffers, &output_intermediate, &output_final, "src/spmm_mul.wgsl");
+
     // Dispatch computation
-    run_csr_multiplication(&device, &queue, &csr_buffers, &b_buf, &output_intermediate, a.n_rows, n_vecs, "spmm_mul.wgsl").await;
-    run_csr_multiplication(&device, &queue, &csr_t_buffers, &output_intermediate, &output_final, at.n_rows, n_vecs, "spmm_mul.wgsl").await;
+    println!("Starting shaders...");
+
+    let start = Instant::now();
+    run_csr_multiplication(&device, &queue, &csr_pipeline, a.n_rows).await;
+    println!("First done...");
+    run_csr_multiplication(&device, &queue, &csr_t_pipeline,at.n_rows).await;
+    let duration = start.elapsed();
+    println!("Inner execution time: {:?}", duration);
 
     // Copy result to readback buffer
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Readback Encoder") });
@@ -97,19 +106,16 @@ pub async fn csr_dense_mult(
 
 }
 
+struct CsrPipeline {
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
+    pipeline: wgpu::ComputePipeline,
+}
 
-async fn run_csr_multiplication(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    csr_bufs: &GpuCsrBuffers,
-    input_buf: &wgpu::Buffer,
-    output_buf: &wgpu::Buffer,
-    n_rows: usize,
-    n_vecs: usize,
-    shader_path: &str,
-) {
+fn create_csr_pipeline(device: &wgpu::Device, csr_bufs: &GpuCsrBuffers,    input_buf: &wgpu::Buffer,
+    output_buf: &wgpu::Buffer, shader_src: &str) -> CsrPipeline {
     // Load shader
-    let shader_src = std::fs::read_to_string(shader_path).unwrap();
+    let shader_src = std::fs::read_to_string(shader_src).unwrap();
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Matrix Shader"),
         source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader_src)),
@@ -210,6 +216,19 @@ async fn run_csr_multiplication(
         compilation_options: wgpu::PipelineCompilationOptions::default(),
     });
 
+    // let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+    //     label: Some("Compute Encoder"),
+    // });
+
+    CsrPipeline { bind_group_layout, bind_group, pipeline: compute_pipeline }
+}
+
+async fn run_csr_multiplication(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    pipeline: &CsrPipeline,
+    n_rows: usize,
+) {
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("Compute Encoder"),
     });
@@ -218,9 +237,12 @@ async fn run_csr_multiplication(
             label: Some("Compute Pass"), 
             timestamp_writes: None 
         });
-        cpass.set_pipeline(&compute_pipeline);
-        cpass.set_bind_group(0, &bind_group, &[]);
-        cpass.dispatch_workgroups(n_rows as u32, 1, 1);
+        cpass.set_pipeline(&pipeline.pipeline);
+        cpass.set_bind_group(0, &pipeline.bind_group, &[]);
+        let x_groups = 65535;
+        let y_groups = (n_rows as u32 + x_groups - 1) / x_groups;
+        cpass.dispatch_workgroups(x_groups.min(n_rows as u32), y_groups, 1);
+        // cpass.dispatch_workgroups( n_rows as u32, 1, 1);
     }
     queue.submit(Some(encoder.finish()));
     device.poll(wgpu::PollType::Wait).unwrap();
@@ -274,9 +296,11 @@ mod tests {
 fn test_csr_dense_mult_with_sms() {
     // Load CSR matrix from SMS file
     let p = 257u32;
-    let csr = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_9.txt", p).unwrap();
+    let csr = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_10.txt", p).unwrap();
     let csrt = csr.transpose();
-    let n_vecs = 64;
+    let n_vecs = 16;
+
+    println!("CSR Matrix loaded with {} rows and {} columns", csr.n_rows, csr.n_cols);
 
     // Create a dense matrix B
     let mut rng = rand::rng();
