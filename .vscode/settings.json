@@ -2,6 +2,7 @@
     "files.associations": {
         "*.sage": "python",
         "matrices.C": "cpp",
-        "cutest.C": "cpp"
+        "cutest.C": "cpp",
+        "vector": "cpp"
     }
 }

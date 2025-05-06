@@ -92,6 +92,7 @@ int main(int argc, char** argv) {
     CHECK_CUDA(cudaMalloc((void**)&d_vals, nnz * sizeof(float)));
     CHECK_CUDA(cudaMalloc((void**)&d_dense, numCols * denseCols * sizeof(float)));
     CHECK_CUDA(cudaMalloc((void**)&d_result, numRows * denseCols * sizeof(float)));
+    // CHECK_CUDA(cudaMalloc(&d_result, numRows * denseCols * sizeof(float)));
 
     CHECK_CUDA(cudaMemcpy(d_rowPtr, h_rowPtr.data(), (numRows + 1) * sizeof(int), cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_colInd, h_colInd.data(), nnz * sizeof(int), cudaMemcpyHostToDevice));
@@ -110,6 +111,7 @@ int main(int argc, char** argv) {
                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F));
     CHECK_CUSPARSE(cusparseCreateDnMat(&matB, numCols, denseCols, denseCols,
                                        d_dense, CUDA_R_32F, CUSPARSE_ORDER_ROW));
+                //    cusparseCreateDnMat(&matC, numRows, denseCols, denseCols, d_result, CUDA_R_32F, CUSPARSE_ORDER_ROW);
     CHECK_CUSPARSE(cusparseCreateDnMat(&matC, numRows, denseCols, denseCols,
                                        d_result, CUDA_R_32F, CUSPARSE_ORDER_ROW));
 
@@ -131,6 +133,8 @@ int main(int argc, char** argv) {
     CHECK_CUSPARSE(cusparseSpMM(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
         &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
+    
+    CHECK_CUDA(cudaDeviceSynchronize());
     CHECK_CUDA(cudaEventRecord(stop));
 
     //CHECK_CUDA(cudaEventSynchronize(stop));
