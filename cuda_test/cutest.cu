@@ -76,6 +76,8 @@ int main(int argc, char** argv) {
         h_csrVals[dest] = h_values[i];
     }
 
+    std::cout << "CSR matrix created with " << nnz << " non-zero elements." << std::endl;
+
     // Dense matrix B (numCols × denseCols)
     int denseCols = 64;
     std::vector<float> h_dense(numCols * denseCols);
@@ -120,9 +122,25 @@ int main(int argc, char** argv) {
         &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize));
     CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
 
+    std::cout << "Running computation ... " << std::endl;
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
+    CHECK_CUDA(cudaEventRecord(start));
     CHECK_CUSPARSE(cusparseSpMM(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
         &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
+    CHECK_CUDA(cudaEventRecord(stop));
+
+    CHECK_CUDA(cudaEventSynchronize(stop));
+    float milliseconds = 0;
+    CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+
+    std::cout << "Computation completed in " << milliseconds << " ms." << std::endl;
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
 
     // Retrieve result
     std::vector<float> h_result(numRows * denseCols);
