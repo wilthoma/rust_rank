@@ -20,38 +20,46 @@
         exit(EXIT_FAILURE); \
     }
 
-int main() {
-    // Load sparse matrix from "matrix.txt" (Matrix Market format)
-    std::ifstream fin("matrix.txt");
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " matrix_file.txt" << std::endl;
+        return 1;
+    }
+
+    std::ifstream fin(argv[1]);
     if (!fin) {
-        std::cerr << "Failed to open matrix.txt" << std::endl;
+        std::cerr << "Failed to open file: " << argv[1] << std::endl;
         return 1;
     }
 
     std::string line;
-    // Skip comments
+    // Skip comment lines
     do {
         std::getline(fin, line);
-    } while (line[0] == '%');
+    } while (!fin.eof() && line[0] == '%');
 
-    int numRows, numCols, nnz;
-    std::istringstream(line) >> numRows >> numCols >> nnz;
+    int numRows, numCols;
+    std::string marker;
+    std::istringstream(line) >> numRows >> numCols >> marker;
 
-    std::vector<int> h_rowIndices(nnz);
-    std::vector<int> h_colIndices(nnz);
-    std::vector<float> h_values(nnz);
+    std::vector<int> h_rowIndices;
+    std::vector<int> h_colIndices;
+    std::vector<float> h_values;
 
-    for (int i = 0; i < nnz; ++i) {
+    while (std::getline(fin, line)) {
+        if (line.empty() || line[0] == '%') continue;
         int row, col;
         float val;
-        fin >> row >> col >> val;
-        h_rowIndices[i] = row - 1; // 1-based to 0-based
-        h_colIndices[i] = col - 1;
-        h_values[i] = val;
+        std::istringstream(line) >> row >> col >> val;
+        h_rowIndices.push_back(row - 1);
+        h_colIndices.push_back(col - 1);
+        h_values.push_back(val);
     }
     fin.close();
 
-    // Convert COO to CSR
+    int nnz = h_values.size();
+
+    // Build CSR
     std::vector<int> h_rowPtr(numRows + 1, 0);
     for (int i = 0; i < nnz; ++i)
         h_rowPtr[h_rowIndices[i] + 1]++;
@@ -68,13 +76,13 @@ int main() {
         h_csrVals[dest] = h_values[i];
     }
 
-    // Dense matrix dimensions
+    // Dense matrix B (numCols × denseCols)
     int denseCols = 64;
     std::vector<float> h_dense(numCols * denseCols);
     for (auto& val : h_dense)
         val = static_cast<float>(rand()) / RAND_MAX;
 
-    // Allocate device memory
+    // Device memory
     int *d_rowPtr, *d_colInd;
     float *d_vals, *d_dense, *d_result;
     CHECK_CUDA(cudaMalloc((void**)&d_rowPtr, (numRows + 1) * sizeof(int)));
@@ -88,7 +96,7 @@ int main() {
     CHECK_CUDA(cudaMemcpy(d_vals, h_csrVals.data(), nnz * sizeof(float), cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_dense, h_dense.data(), numCols * denseCols * sizeof(float), cudaMemcpyHostToDevice));
 
-    // cuSPARSE setup
+    // cuSPARSE handles
     cusparseHandle_t handle;
     CHECK_CUSPARSE(cusparseCreate(&handle));
 
@@ -116,12 +124,11 @@ int main() {
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
         &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
 
-    // Copy result back
+    // Retrieve result
     std::vector<float> h_result(numRows * denseCols);
     CHECK_CUDA(cudaMemcpy(h_result.data(), d_result, numRows * denseCols * sizeof(float), cudaMemcpyDeviceToHost));
 
-    std::cout << "Sparse x dense multiplication completed. Example result value: "
-              << h_result[0] << std::endl;
+    std::cout << "Matrix multiplication complete. First result value: " << h_result[0] << std::endl;
 
     // Cleanup
     cudaFree(d_rowPtr);
