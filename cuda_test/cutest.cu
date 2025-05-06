@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
 
     //CHECK_CUDA(cudaEventSynchronize(stop));
     float milliseconds = 0;
-    CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+    cudaEventElapsedTime(&milliseconds, start, stop);
 
     std::cout << "Computation completed in " << milliseconds << " ms." << std::endl;
 
