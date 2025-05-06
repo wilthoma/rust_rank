@@ -109,12 +109,12 @@ int main() {
 
     CHECK_CUSPARSE(cusparseSpMM_bufferSize(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_MM_ALG_DEFAULT, &bufferSize));
+        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_MV_ALG_DEFAULT, &bufferSize));
     CHECK_CUDA(cudaMalloc(&dBuffer, bufferSize));
 
     CHECK_CUSPARSE(cusparseSpMM(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_MM_ALG_DEFAULT, dBuffer));
+        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_MV_ALG_DEFAULT, dBuffer));
 
     // Copy result back
     std::vector<float> h_result(numRows * denseCols);
