@@ -83,9 +83,9 @@ pub async fn csr_dense_mult(
     println!("Starting shaders...");
 
     let start = Instant::now();
-    run_csr_multiplication(&device, &queue, &csr_pipeline, a.n_rows).await;
+    run_csr_multiplication(&device, &queue, &csr_pipeline, a.n_rows, n_vecs).await;
     println!("First done...");
-    run_csr_multiplication(&device, &queue, &csr_t_pipeline,at.n_rows).await;
+    run_csr_multiplication(&device, &queue, &csr_t_pipeline,at.n_rows, n_vecs).await;
     let duration = start.elapsed();
     println!("Inner execution time: {:?}", duration);
 
@@ -228,6 +228,7 @@ async fn run_csr_multiplication(
     queue: &wgpu::Queue,
     pipeline: &CsrPipeline,
     n_rows: usize,
+    n_vects: usize,
 ) {
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("Compute Encoder"),
@@ -241,7 +242,7 @@ async fn run_csr_multiplication(
         cpass.set_bind_group(0, &pipeline.bind_group, &[]);
         let x_groups = 65535;
         let y_groups = (n_rows as u32 + x_groups - 1) / x_groups;
-        cpass.dispatch_workgroups(x_groups.min(n_rows as u32), y_groups, 1);
+        cpass.dispatch_workgroups(x_groups.min(n_rows as u32), y_groups, n_vects as u32);
         // cpass.dispatch_workgroups( n_rows as u32, 1, 1);
     }
     queue.submit(Some(encoder.finish()));
@@ -296,8 +297,10 @@ mod tests {
 fn test_csr_dense_mult_with_sms() {
     // Load CSR matrix from SMS file
     let p = 257u32;
-    let csr = CsrMatrix::load_csr_matrix_from_sms("/r/scratch/users/wilthoma/gh_data/data/ordinary/odd_edges/contractD12_10.txt", p).unwrap();
+    // let csr = CsrMatrix::load_csr_matrix_from_sms("/r/scratch/users/wilthoma/gh_data/data/ordinary/odd_edges/contractD12_10.txt", p).unwrap();
+    let csr = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_9.txt", p).unwrap();
     // let csr = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_10.txt", p).unwrap();
+    
     let csrt = csr.transpose();
     let n_vecs = 16;
 
