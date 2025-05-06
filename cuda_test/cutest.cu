@@ -132,8 +132,21 @@ int main(int argc, char** argv) {
     CHECK_CUDA(cudaEventRecord(start));
     CHECK_CUSPARSE(cusparseSpMM(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
-    
+        &alpha, matA, matB, &beta, matC, CUDA_R_32F, CUSPARSE_SPMM_ALG_DEFAULT, d_buffer));
+        // cusparseSpMM(
+        //     handle,
+        //     CUSPARSE_OPERATION_NON_TRANSPOSE,
+        //     CUSPARSE_OPERATION_NON_TRANSPOSE,
+        //     &alpha,
+        //     matA,
+        //     matB,
+        //     &beta,
+        //     matC,
+        //     CUDA_R_32F,
+        //     CUSPARSE_SPMM_ALG_DEFAULT,
+        //     d_buffer
+        // );
+
     CHECK_CUDA(cudaDeviceSynchronize());
     CHECK_CUDA(cudaEventRecord(stop));
 
