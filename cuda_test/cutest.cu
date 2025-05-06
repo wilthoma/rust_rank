@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cusparse.h>
 #include <cuda_runtime.h>
+#include <fstream>  // Include fstream for file input
 
 // CUDA error checking macro
 #define CHECK_CUDA(call) { \
@@ -23,7 +24,7 @@
 }
 
 void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<float>& values, int& numRows, int& numCols, int& nnz) {
-    std::ifstream file(filename);
+    std::ifstream file(filename);  // Make sure to include <fstream>
     if (!file) {
         std::cerr << "Failed to open file: " << filename << std::endl;
         exit(-1);
