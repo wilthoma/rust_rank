@@ -13,6 +13,7 @@ mod polynomial;
 mod ntt;
 // mod fftpoly;
 mod sigma_basis;
+mod gpu_vectorstream;
 // mod upoly;
 mod poly_mat_mul;
 mod modular_linalg;
