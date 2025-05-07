@@ -608,6 +608,33 @@ Simd<T, LANES>: Copy
         }).collect()
     }
 
+    fn serial_sparse_matvec_mul_oct(&self, vector : &Vec<[T;8]>, theprime: T) -> Vec<[T;8]> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+        // const ttheprime :MyInt = 27644437;
+        // Parallel iterator over rows
+        (0..self.n_rows).into_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let sum = colis
+                .zip(&self.values[start..end])
+                .fold([T::zero();8], |acc, (v, &val)| {
+                    let mut res = acc;
+                    res[0] += v[0] * val;
+                    res[1] += v[1] * val;
+                    res[2] += v[2] * val;
+                    res[3] += v[3] * val;
+                    res[4] += v[4] * val;
+                    res[5] += v[5] * val;
+                    res[6] += v[6] * val;
+                    res[7] += v[7] * val;
+                    res
+                });
+            [sum[0]%theprime, sum[1]%theprime, sum[2]%theprime, sum[3]%theprime, 
+             sum[4]%theprime, sum[5]%theprime, sum[6]%theprime, sum[7]%theprime]
+        }).collect()
+    }
+
     pub fn load_csr_matrix_from_sms(file_path: &str, theprime : u32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> 
     where T : TryFrom<u32> ,
     <T as TryFrom<u32>>::Error : std::fmt::Debug,
@@ -1265,11 +1292,76 @@ fn benchmark_sparse_matvec_mul_quad_vs_simd() {
     let duration_simd = start_simd.elapsed();
     println!("Sparse matvec mul simd took: {:?}", duration_simd);
 
+        // Benchmark sparse_matvec_mul_quad
+        let start_quad = Instant::now();
+        let _quad_result = matrix.serial_sparse_matvec_mul_quad(&quad_vector, THE_PRIME);
+        let duration_quad = start_quad.elapsed();
+        println!("Sparse matvec mul quad took: {:?}", duration_quad);
+    
+        // Benchmark sparse_matvec_mul_simd
+        let start_simd = Instant::now();
+        let _simd_result = matrix.serial_sparse_matvec_mul_simd(&simd_vector, THE_PRIME);
+        let duration_simd = start_simd.elapsed();
+        println!("Sparse matvec mul simd took: {:?}", duration_simd);
+
     // Assert that both results are consistent
     let simd_result : Vec<[u32;4]>= _simd_result.iter()
             .map(|v| {
                 let arr = v.to_array();
                 [arr[0], arr[1], arr[2], arr[3]]
+            })
+            .collect();
+    assert_eq!(_quad_result, simd_result, "Results from quad and SIMD methods do not match.");
+}
+
+#[test]
+fn benchmark_sparse_matvec_mul_oct_vs_simd() {
+    const LANES: usize = 8;
+    const THE_PRIME: u32 = 3323;
+
+    // Create a random sparse matrix
+    let matrix = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_10.txt", THE_PRIME).unwrap();
+    let VECTOR_LENGTH = matrix.n_cols;
+
+    // Create random vectors
+    let simd_vector: Vec<Simd<u32, LANES>> = create_random_vector_simd(VECTOR_LENGTH, THE_PRIME);
+    let quad_vector : Vec<[u32;8]> = simd_vector
+        .iter()
+        .map(|v| {
+            let arr = v.to_array();
+            [arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7]]
+        })
+        .collect::<Vec<_>>();
+
+    // Benchmark sparse_matvec_mul_quad
+    let start_quad = Instant::now();
+    let _quad_result = matrix.serial_sparse_matvec_mul_oct(&quad_vector, THE_PRIME);
+    let duration_quad = start_quad.elapsed();
+    println!("Sparse matvec mul oct took: {:?}", duration_quad);
+
+    // Benchmark sparse_matvec_mul_simd
+    let start_simd = Instant::now();
+    let _simd_result = matrix.serial_sparse_matvec_mul_simd(&simd_vector, THE_PRIME);
+    let duration_simd = start_simd.elapsed();
+    println!("Sparse matvec mul simd took: {:?}", duration_simd);
+
+        // Benchmark sparse_matvec_mul_quad
+        let start_quad = Instant::now();
+        let _quad_result = matrix.serial_sparse_matvec_mul_oct(&quad_vector, THE_PRIME);
+        let duration_quad = start_quad.elapsed();
+        println!("Sparse matvec mul oct took: {:?}", duration_quad);
+    
+        // Benchmark sparse_matvec_mul_simd
+        let start_simd = Instant::now();
+        let _simd_result = matrix.serial_sparse_matvec_mul_simd(&simd_vector, THE_PRIME);
+        let duration_simd = start_simd.elapsed();
+        println!("Sparse matvec mul simd took: {:?}", duration_simd);
+
+    // Assert that both results are consistent
+    let simd_result : Vec<[u32;8]>= _simd_result.iter()
+            .map(|v| {
+                let arr = v.to_array();
+                [arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7]]
             })
             .collect();
     assert_eq!(_quad_result, simd_result, "Results from quad and SIMD methods do not match.");
