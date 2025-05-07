@@ -21,13 +21,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    let k = u32(global_id.z);
-
     let row_start = row_ptr[row];
     let row_end = row_ptr[row + 1];
 
     // For each output vector (column of B)
-    //for (var k = 0u; k < params.n_vecs; k = k + 1u) {
+    for (var k = 0u; k < params.n_vecs; k = k + 1u) {
         var acc = 0u;
 
         for (var idx = row_start; idx < row_end; idx = idx + 1u) {
@@ -40,5 +38,5 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // C[row][k] = acc  (row-major)
         let out_index = row * params.n_vecs + k;
         atomicStore(&C[out_index], acc);
-    //}
+    }
 }
