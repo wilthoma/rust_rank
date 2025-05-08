@@ -50,6 +50,10 @@
 #include <cusparse.h>         // cusparseSpMM
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
+#include <iostream>
+#include <vector>
+#include <cassert>
+#include <fstream>  // Include fstream for file input
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -166,7 +170,7 @@ int main(void) {
     load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
     coo_matrix_to_csr(numRows, rowIndices, colIndices, values, csrOffsets, csrColumns, csrValues);
 
-    
+
     // Random dense matrix for multiplication
     int denseCols = 10;  // Example: Result matrix column size
     std::vector<float> h_dense(numCols * denseCols);
