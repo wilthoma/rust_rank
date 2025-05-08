@@ -167,8 +167,17 @@ int main(int argc, char* argv[]) {
     std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns;
     std::vector<float> values, csrValues;
     int numRows, numCols, nnz;
+    auto loadStart = std::chrono::high_resolution_clock::now();
     load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
+    auto loadStop = std::chrono::high_resolution_clock::now();
+    auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
+    std::cout << "Matrix loading runtime: " << loadMilliseconds << " ms" << std::endl;
+
+    auto convertStart = std::chrono::high_resolution_clock::now();
     coo_matrix_to_csr(numRows, rowIndices, colIndices, values, csrOffsets, csrColumns, csrValues);
+    auto convertStop = std::chrono::high_resolution_clock::now();
+    auto convertMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(convertStop - convertStart).count();
+    std::cout << "COO to CSR conversion runtime: " << convertMilliseconds << " ms" << std::endl;
 
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
