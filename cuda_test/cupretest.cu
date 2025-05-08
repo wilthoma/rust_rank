@@ -76,6 +76,7 @@
     }                                                                          \
 }
 
+// typedef float myfloat;
 typedef double myfloat;
 
 void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
@@ -317,8 +318,13 @@ int main(int argc, char* argv[]) {
 
     //--------------------------------------------------------------------------
     // device result check
+    auto copyStart = std::chrono::high_resolution_clock::now();
     CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(myfloat),
                            cudaMemcpyDeviceToHost) )
+    auto copyStop = std::chrono::high_resolution_clock::now();
+    auto copyMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(copyStop - copyStart).count();
+    std::cout << "Device to host copy runtime: " << copyMilliseconds << " ms" << std::endl;
+    
     int correct = 1;
     // for (int i = 0; i < A_num_rows; i++) {
     //     for (int j = 0; j < B_num_cols; j++) {
