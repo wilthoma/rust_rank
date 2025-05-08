@@ -46,6 +46,8 @@
  * comments to the code, the above Disclaimer and U.S. Government End
  * Users Notice.
  */
+#include <cuda.h>
+#include <cuda_runtime.h>
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
 #include <cusparse.h>         // cusparseSpMM
 #include <stdio.h>            // printf
@@ -134,7 +136,18 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
     }
 }
 
-
+// Define your function here (e.g., increment each element)
+__device__ float my_function(float input) {
+    return input + 1.0f;
+}
+  
+// CUDA kernel to apply the function
+__global__ void apply_function_kernel(float *device_matrix, int matrix_size) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < matrix_size) {
+        device_matrix[index] = my_function(device_matrix[index]);
+    }
+}
 
 int main(int argc, char* argv[]) {
     // Host problem definition
@@ -315,6 +328,12 @@ int main(int argc, char* argv[]) {
 
     CHECK_CUDA(cudaEventDestroy(start));
     CHECK_CUDA(cudaEventDestroy(stop));
+
+
+    // reduce mod p 
+    // Call the kernel
+    int matrix_size = C_size;
+    apply_function_kernel<<<((matrix_size + 255) / 256), 256>>>(dC, matrix_size);
 
 
     //--------------------------------------------------------------------------
