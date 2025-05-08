@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
     // float beta            = 0.0f;
 
     // load matrix from file
-    if (argc < 2) {
+    if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns>" << std::endl;
         return -1;
     }
