@@ -635,6 +635,30 @@ Simd<T, LANES>: Copy
         }).collect()
     }
 
+    fn serial_sparse_matvec_mul_multi<const LANES : usize>(&self, vector : &Vec<[T;LANES]>, theprime: T) -> Vec<[T;LANES]> {
+        assert_eq!(self.n_cols, vector.len(), "Matrix and vector dimensions must align.");
+        // const ttheprime :MyInt = 27644437;
+        // Parallel iterator over rows
+        (0..self.n_rows).into_iter().map(|row| {
+            let start = self.row_ptr[row];
+            let end = self.row_ptr[row + 1];
+            let colis = self.col_indices[start..end].iter().map(|&col| vector[col]);
+            let mut sum = colis
+                .zip(&self.values[start..end])
+                .fold([T::zero();LANES], |acc, (v, &val)| {
+                    let mut res = acc;
+                    for i in 0..LANES {
+                        res[i] += v[i] * val;
+                    }   
+                    res
+                });
+            for i in 0..LANES {
+                sum[i] = sum[i] % theprime;
+            }
+            sum
+        }).collect()
+    }
+
     pub fn load_csr_matrix_from_sms(file_path: &str, theprime : u32) -> Result<CsrMatrix<T>, Box<dyn std::error::Error>> 
     where T : TryFrom<u32> ,
     <T as TryFrom<u32>>::Error : std::fmt::Debug,
@@ -1365,4 +1389,78 @@ fn benchmark_sparse_matvec_mul_oct_vs_simd() {
             })
             .collect();
     assert_eq!(_quad_result, simd_result, "Results from quad and SIMD methods do not match.");
+}
+
+
+#[test]
+fn benchmark_sparse_matvec_mul_multi_vs_simd() {
+    const LANES: usize = 8;
+    const THE_PRIME: u32 = 3323;
+
+    // Create a random sparse matrix
+    let matrix = CsrMatrix::load_csr_matrix_from_sms("data/contractD_tri19_11.txt", THE_PRIME).unwrap();
+    // let matrix = CsrMatrix::load_csr_matrix_from_sms("data/contractD12_10.txt", THE_PRIME).unwrap();
+    let VECTOR_LENGTH = matrix.n_cols;
+
+    for _ in 0..10 {
+        // return;
+    
+    // Create random vectors
+    let simd_vector: Vec<Simd<u32, LANES>> = create_random_vector_simd(VECTOR_LENGTH, THE_PRIME);
+    let quad_vector : Vec<[u32;LANES]> = simd_vector
+        .iter()
+        .map(|v| {
+            let arr = v.to_array();
+            arr
+            //[arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7]]
+        })
+        .collect::<Vec<_>>();
+
+    // Benchmark sparse_matvec_mul_quad
+    let start_quad = Instant::now();
+    let _quad_result = matrix.serial_sparse_matvec_mul_multi::<LANES>(&quad_vector, THE_PRIME);
+    let duration_quad = start_quad.elapsed();
+    println!("Sparse matvec mul multi took: {:?}", duration_quad);
+
+    // Benchmark sparse_matvec_mul_simd
+    let start_simd = Instant::now();
+    let _simd_result = matrix.serial_sparse_matvec_mul_simd(&simd_vector, THE_PRIME);
+    let duration_simd = start_simd.elapsed();
+    println!("Sparse matvec mul simd took: {:?}", duration_simd);
+
+
+    // Assert that both results are consistent
+    let simd_result : Vec<[u32;LANES]>= _simd_result.iter()
+            .map(|v| {
+                let arr = v.to_array();
+                arr
+                //[arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6], arr[7]]
+            })
+            .collect();
+    assert_eq!(_quad_result, simd_result, "Results from quad and SIMD methods do not match.");
+
+
+        // time both unzips
+        let start_quad = Instant::now();
+        let xsimd = unzip_simd_vector(&_simd_result);
+        let duration_quad = start_quad.elapsed();
+        println!("Unzip simd took: {:?}", duration_quad);
+        let start_quad = Instant::now();
+        let xmulti : [Vec<u32>;LANES]= std::array::from_fn(|i| {
+            _quad_result.iter().map(|v| v[i]).collect()
+        });
+        let duration_quad = start_quad.elapsed();
+        println!("Unzip multi took: {:?}", duration_quad);
+        let start_quad = Instant::now();
+        let xmulti = (0..LANES).map(|i| {
+            _quad_result.iter().map(|v| v[i]).collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+        let duration_quad = start_quad.elapsed();
+        println!("Unzip multi2 took: {:?}", duration_quad);
+
+
+
+        }
+
+
 }
