@@ -173,7 +173,7 @@ int main(int argc, char* argv[]) {
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
     // Random dense matrix for multiplication
-    int denseCols = atoi[argv[2]];  // Example: Result matrix column size
+    int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     std::vector<float> h_dense(numCols * denseCols);
     for (int i = 0; i < numCols * denseCols; ++i) {
         h_dense[i] = i % 101; //static_cast<float>(rand()) / RAND_MAX;  // Random initialization
