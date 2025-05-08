@@ -243,6 +243,12 @@ int main(int argc, char* argv[]) {
     cusparseDnMatDescr_t matB, matC;
     void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+    CHECK_CUDA(cudaEventRecord(start, 0));
+
+
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
     CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_nnz,
@@ -284,6 +290,18 @@ int main(int argc, char* argv[]) {
     CHECK_CUSPARSE( cusparseDestroyDnMat(matB) )
     CHECK_CUSPARSE( cusparseDestroyDnMat(matC) )
     CHECK_CUSPARSE( cusparseDestroy(handle) )
+
+    CHECK_CUDA(cudaEventRecord(stop, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+
+    float milliseconds = 0;
+    CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+    std::cout << "SpMM operation runtime: " << milliseconds << " ms" << std::endl;
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
+
+
     //--------------------------------------------------------------------------
     // device result check
     CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(float),
