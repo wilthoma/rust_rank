@@ -332,9 +332,12 @@ int main(int argc, char* argv[]) {
 
     // reduce mod p 
     // Call the kernel
+    auto modstart = std::chrono::high_resolution_clock::now();
     int matrix_size = C_size;
     apply_function_kernel<<<((matrix_size + 255) / 256), 256>>>(dC, matrix_size);
-
+    auto modstop = std::chrono::high_resolution_clock::now();
+    auto modMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(modstop - modstart).count();
+    std::cout << "Kernel execution runtime (mod): " << modMilliseconds << " ms" << std::endl;
 
     //--------------------------------------------------------------------------
     // device result check
