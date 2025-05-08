@@ -1,3 +1,10 @@
 nice -n 7 ~/prog/tmp2/rust_rank/target/release/rust_rank contractD_tri17_11.txt -w4 -l4 -t20 -s3000 --clone --serial_matvmul
 cd /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/
 cd /r/scratch/users/wilthoma/gh_data/data/ordinary/odd_edges/
+
+
+git pull && /usr/local/cuda/bin/nvcc cupretest.cu -lcusparse -o cupretest 
+
+module load modules/EasyBuild && module load GCC/13.3.0
+
+./cupretest /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri19_11.txt 64

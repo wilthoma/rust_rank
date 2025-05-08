@@ -76,7 +76,7 @@
     }                                                                          \
 }
 
-typedef float myfloat;
+typedef float64_t myfloat;
 
 void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
     std::ifstream file(filename);  // Make sure to include <fstream>
