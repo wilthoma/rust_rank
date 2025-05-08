@@ -320,13 +320,13 @@ int main(int argc, char* argv[]) {
 
         // Create dense matrix D for the result of the second multiplication
         myfloat *dD;
-        int D_size = A_num_rows * B_num_cols;
+        int D_size = A_num_cols * B_num_cols;
         CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
         CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
 
         // Create dense matrix descriptor for D
         cusparseDnMatDescr_t matD;
-        CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_rows, B_num_cols, ldc, dD,
+        CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_cols, B_num_cols, ldc, dD,
                                            CUDA_FMT, CUSPARSE_ORDER_COL));
 
         // Execute SpMM for the second multiplication (matA^T * matC -> matD)
