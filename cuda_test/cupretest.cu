@@ -244,9 +244,6 @@ int main(int argc, char* argv[]) {
     void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
     cudaEvent_t start, stop;
-    CHECK_CUDA(cudaEventCreate(&start));
-    CHECK_CUDA(cudaEventCreate(&stop));
-    CHECK_CUDA(cudaEventRecord(start, 0));
 
 
     CHECK_CUSPARSE( cusparseCreate(&handle) )
@@ -277,6 +274,10 @@ int main(int argc, char* argv[]) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_R_32F,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+    CHECK_CUDA(cudaEventRecord(start, 0));
 
     // execute SpMM
     CHECK_CUSPARSE( cusparseSpMM(handle,
