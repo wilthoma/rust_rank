@@ -137,12 +137,12 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
 }
 
 // Define your function here (e.g., increment each element)
-__device__ float my_function(float input) {
-    return input + 1.0f;
+__device__ float my_function(myfloat input) {
+    return input + 1.0;
 }
   
 // CUDA kernel to apply the function
-__global__ void apply_function_kernel(float *device_matrix, int matrix_size) {
+__global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index < matrix_size) {
         device_matrix[index] = my_function(device_matrix[index]);
