@@ -57,6 +57,9 @@
 #include <cassert>
 #include <fstream>  // Include fstream for file input
 #include <chrono>
+#include <cublas_v2.h>
+// #include "cublas_utils.h"
+
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -77,6 +80,25 @@
         return EXIT_FAILURE;                                                   \
     }                                                                          \
 }
+
+// cublas API error checking
+#define CUBLAS_CHECK(err)                                                                          \
+    do {                                                                                           \
+        cublasStatus_t err_ = (err);                                                               \
+        if (err_ != CUBLAS_STATUS_SUCCESS) {                                                       \
+            std::printf("cublas error %d at %s:%d\n", err_, __FILE__, __LINE__);                   \
+            throw std::runtime_error("cublas error");                                              \
+        }                                                                                          \
+    } while (0)
+
+#define CUDA_CHECK(err)                                                                            \
+    do {                                                                                           \
+        cudaError_t err_ = (err);                                                                  \
+        if (err_ != cudaSuccess) {                                                                 \
+            std::printf("CUDA error %d at %s:%d\n", err_, __FILE__, __LINE__);                     \
+            throw std::runtime_error("CUDA error");                                                \
+        }                                                                                          \
+    } while (0)
 
 // const int THESMALLPRIME = 3323;
 
@@ -278,6 +300,9 @@ int main(int argc, char* argv[]) {
     cudaEvent_t start, stop;
 
 
+    cublasHandle_t blashandle;
+    CHECK_CUBLAS(cublasCreate(&blashandle));
+
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
     CHECK_CUSPARSE( cusparseCreateCsr(&matA, A_num_rows, A_num_cols, A_nnz,
@@ -310,6 +335,17 @@ int main(int argc, char* argv[]) {
     // Create dense matrix descriptor for D
     cusparseDnMatDescr_t matD;
     CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_cols, B_num_cols, ldd, dD,
+                                        CUDA_FMT, CUSPARSE_ORDER_COL));
+
+    myfloat *dSp;
+    int Sp_size = B_num_cols * B_num_cols;
+    CHECK_CUDA(cudaMalloc((void**)&dSp, Sp_size * sizeof(myfloat)));
+    CHECK_CUDA(cudaMemset(dSp, 0, Sp_size * sizeof(myfloat)));
+    int ldsp = B_num_cols; // Leading dimension of D
+
+    // Create dense matrix descriptor for D
+    cusparseDnMatDescr_t matSp;
+    CHECK_CUSPARSE(cusparseCreateDnMat(&matSp, B_num_cols, B_num_cols, ldsp, dSp,
                                         CUDA_FMT, CUSPARSE_ORDER_COL));
 
 
@@ -354,6 +390,21 @@ int main(int argc, char* argv[]) {
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         &alpha, matA, matD, &beta, matC, CUDA_FMT,
                                         CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+
+        CUBLAS_CHECK(
+            cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, B_num_cols, B_num_cols, A_num_cols, &alpha, dA, A_num_cols, dB, A_num_cols, &beta, dSp, B_num_cols));
+        
+        // CHECK_CUBLAS(cublasGemmEx(
+        //     handle,
+        //     CUBLAS_OP_T, CUBLAS_OP_N, // transA = Dᵗ, transB = D
+        //     B_num_cols, B_num_cols, A_num_cols,
+        //     &alpha,
+        //     dD, CUDA_FMT, A_num_cols,
+        //     dD, CUDA_FMT, A_num_cols,
+        //     &beta,
+        //     dSp, CUDA_FMT, B_num_cols,
+        //     CUDA_FMT,
+        //     CUBLAS_GEMM_DEFAULT));                                
     
     }
 
@@ -389,6 +440,7 @@ int main(int argc, char* argv[]) {
     CHECK_CUSPARSE( cusparseDestroyDnMat(matC) )
     // Clean up the dense matrix descriptor for D
     CHECK_CUSPARSE(cusparseDestroyDnMat(matD));
+    CHECK_CUSPARSE(cusparseDestroyDnMat(matSp));
 
     CHECK_CUSPARSE( cusparseDestroy(handle) )
 
@@ -443,5 +495,6 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
     CHECK_CUDA(cudaFree(dD));
+    CHECK_CUDA(cudaFree(dSp));
     return EXIT_SUCCESS;
 }
