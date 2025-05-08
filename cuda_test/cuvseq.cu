@@ -299,9 +299,26 @@ int main(int argc, char* argv[]) {
                                  CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
 
+
+    // Create dense matrix D for the result of the second multiplication
+    myfloat *dD;
+    int D_size = A_num_cols * B_num_cols;
+    CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
+    CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
+    int ldd = A_num_cols; // Leading dimension of D
+
+    // Create dense matrix descriptor for D
+    cusparseDnMatDescr_t matD;
+    CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_cols, B_num_cols, ldd, dD,
+                                        CUDA_FMT, CUSPARSE_ORDER_COL));
+
+
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
     CHECK_CUDA(cudaEventRecord(start, 0));
+
+    
+        // execute SpMM
 
     // execute preprocess (optional)
     CHECK_CUSPARSE( cusparseSpMM_preprocess(
@@ -311,6 +328,9 @@ int main(int argc, char* argv[]) {
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
+
+    
+
     // execute SpMM
     CHECK_CUSPARSE( cusparseSpMM(handle,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -318,24 +338,24 @@ int main(int argc, char* argv[]) {
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
-        // Create dense matrix D for the result of the second multiplication
-        myfloat *dD;
-        int D_size = A_num_cols * B_num_cols;
-        CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
-        CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
-        int ldd = A_num_cols; // Leading dimension of D
 
-        // Create dense matrix descriptor for D
-        cusparseDnMatDescr_t matD;
-        CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_cols, B_num_cols, ldd, dD,
-                                           CUDA_FMT, CUSPARSE_ORDER_COL));
 
+    for (int round=0;round<5;round++){
+        std::cout << "Round " << round << std::endl;
         // Execute SpMM for the second multiplication (matA^T * matC -> matD)
         CHECK_CUSPARSE(cusparseSpMM(handle,
                                     CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
                                     CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
+
+        CHECK_CUSPARSE( cusparseSpMM(handle,
+                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                        &alpha, matA, matD, &beta, matC, CUDA_FMT,
+                                        CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+    
+    }
 
         // Copy the result from device to host
         // std::vector<myfloat> d_result(A_num_rows * B_num_cols);
