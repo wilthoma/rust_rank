@@ -54,6 +54,7 @@
 #include <vector>
 #include <cassert>
 #include <fstream>  // Include fstream for file input
+#include <chrono>
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
