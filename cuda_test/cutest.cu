@@ -58,8 +58,9 @@ int main(int argc, char* argv[]) {
     int denseCols = 10;  // Example: Result matrix column size
     std::vector<float> h_dense(numCols * denseCols);
     for (int i = 0; i < numCols * denseCols; ++i) {
-        h_dense[i] = static_cast<float>(rand()) / RAND_MAX;  // Random initialization
+        h_dense[i] = 1; //static_cast<float>(rand()) / RAND_MAX;  // Random initialization
     }
+    
 
     // Allocate device memory for input matrices and results
     float *d_dense, *d_result, *d_rowPtr, *d_colInd, *d_csrVals;

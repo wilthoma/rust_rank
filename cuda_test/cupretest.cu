@@ -71,6 +71,63 @@
     }                                                                          \
 }
 
+void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<float>& values, int& numRows, int& numCols, int& nnz) {
+    std::ifstream file(filename);  // Make sure to include <fstream>
+    if (!file) {
+        std::cerr << "Failed to open file: " << filename << std::endl;
+        exit(-1);
+    }
+
+    char arbitraryChar;
+    file >> numRows >> numCols >> arbitraryChar;
+
+    std::vector<int> tempRowIndices;
+    std::vector<int> tempColIndices;
+    std::vector<float> tempValues;
+
+    int row, col;
+    float value;
+    while (file >> row >> col >> value) {
+        tempRowIndices.push_back(row);
+        tempColIndices.push_back(col);
+        tempValues.push_back(value);
+    }
+
+    nnz = tempRowIndices.size();
+    rowIndices = std::move(tempRowIndices);
+    colIndices = std::move(tempColIndices);
+    values = std::move(tempValues);
+
+    file.close();
+}
+
+void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const std::vector<int>& colIndices, const std::vector<float>& values,
+                       std::vector<int>& csrOffsets, std::vector<int>& csrColumns, std::vector<float>& csrValues) {
+    csrOffsets.resize(numRows + 1, 0);
+    csrColumns.resize(values.size());
+    csrValues.resize(values.size());
+
+    std::vector<int> rowCount(numRows, 0);
+    for (int i = 0; i < rowIndices.size(); ++i) {
+        rowCount[rowIndices[i]]++;
+    }
+
+    csrOffsets[0] = 0;
+    for (int i = 1; i <= numRows; ++i) {
+        csrOffsets[i] = csrOffsets[i - 1] + rowCount[i - 1];
+    }
+
+    std::vector<int> tempOffsets = csrOffsets;
+    for (int i = 0; i < rowIndices.size(); ++i) {
+        int row = rowIndices[i];
+        int destIndex = tempOffsets[row]++;
+        csrColumns[destIndex] = colIndices[i];
+        csrValues[destIndex] = values[i];
+    }
+}
+
+
+
 int main(void) {
     // Host problem definition
     int   A_num_rows      = 4;
@@ -97,6 +154,29 @@ int main(void) {
                               67.0f, 40.0f, 195.0f, 188.0f };
     float alpha           = 1.0f;
     float beta            = 0.0f;
+
+    // load matrix from file
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <matrix_file>" << std::endl;
+        return -1;
+    }
+    std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns;
+    std::vector<float> values, csrValues;
+    int numRows, numCols, nnz;
+    load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
+    coo_matrix_to_csr(numRows, rowIndices, colIndices, values, csrOffsets, csrColumns, csrValues);
+
+    
+    // Random dense matrix for multiplication
+    int denseCols = 10;  // Example: Result matrix column size
+    std::vector<float> h_dense(numCols * denseCols);
+    for (int i = 0; i < numCols * denseCols; ++i) {
+        h_dense[i] = 1; //static_cast<float>(rand()) / RAND_MAX;  // Random initialization
+    }
+
+
+
+
     //--------------------------------------------------------------------------
     // Device memory management
     int   *dA_csrOffsets, *dA_columns;
