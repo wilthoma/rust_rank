@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
     float* hC            = &c_dense[0]; //{ 0.0f, 0.0f, 0.0f, 0.0f,
                             //   0.0f, 0.0f, 0.0f, 0.0f,
                             //   0.0f, 0.0f, 0.0f, 0.0f };
-    float* hC_result[]     = &c_result[0]; //{ 19.0f,  8.0f,  51.0f,  52.0f,
+    float* hC_result     = &c_result[0]; //{ 19.0f,  8.0f,  51.0f,  52.0f,
                             //   43.0f, 24.0f, 123.0f, 120.0f,
                             //   67.0f, 40.0f, 195.0f, 188.0f };
     float alpha           = 1.0f;
