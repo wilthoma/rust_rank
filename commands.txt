@@ -11,3 +11,5 @@ module load modules/EasyBuild && module load GCC/13.3.0
 
 ./cupretest /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri19_11.txt 64
 ./cuvseq /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri19_11.txt 64
+
+./cuvseq /r/scratch/users/wilthoma/gh_data/data/ordinary/odd_edges/contractD12_10.txt 64

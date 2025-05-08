@@ -372,8 +372,8 @@ int main(int argc, char* argv[]) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
-                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
-
+                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) );
+    apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
 
 
     for (int round=0;round<5;round++){
@@ -385,15 +385,19 @@ int main(int argc, char* argv[]) {
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
                                     CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
 
+        apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
+
         CHECK_CUSPARSE( cusparseSpMM(handle,
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         &alpha, matA, matD, &beta, matC, CUDA_FMT,
                                         CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+        apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
 
         CUBLAS_CHECK(
             cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, B_num_cols, B_num_cols, A_num_cols, &alpha, dD, A_num_cols, dD, A_num_cols, &beta, dSp, B_num_cols));
         
+            apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
 
             // Copy the device buffer dSp to a local host buffer
             CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
