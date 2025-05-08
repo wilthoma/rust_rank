@@ -76,7 +76,9 @@
     }                                                                          \
 }
 
-void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<float>& values, int& numRows, int& numCols, int& nnz) {
+typedef myfloat float;
+
+void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
     std::ifstream file(filename);  // Make sure to include <fstream>
     if (!file) {
         std::cerr << "Failed to open file: " << filename << std::endl;
@@ -88,10 +90,10 @@ void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, 
 
     std::vector<int> tempRowIndices;
     std::vector<int> tempColIndices;
-    std::vector<float> tempValues;
+    std::vector<myfloat> tempValues;
 
     int row, col;
-    float value;
+    myfloat value;
     while (file >> row >> col >> value) {
         tempRowIndices.push_back(row);
         tempColIndices.push_back(col);
@@ -106,8 +108,8 @@ void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, 
     file.close();
 }
 
-void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const std::vector<int>& colIndices, const std::vector<float>& values,
-                       std::vector<int>& csrOffsets, std::vector<int>& csrColumns, std::vector<float>& csrValues) {
+void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const std::vector<int>& colIndices, const std::vector<myfloat>& values,
+                       std::vector<int>& csrOffsets, std::vector<int>& csrColumns, std::vector<myfloat>& csrValues) {
     csrOffsets.resize(numRows + 1, 0);
     csrColumns.resize(values.size());
     csrValues.resize(values.size());
@@ -166,7 +168,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns;
-    std::vector<float> values, csrValues;
+    std::vector<myfloat> values, csrValues;
     int numRows, numCols, nnz;
     auto loadStart = std::chrono::high_resolution_clock::now();
     load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
@@ -184,17 +186,17 @@ int main(int argc, char* argv[]) {
 
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
-    std::vector<float> h_dense(numCols * denseCols);
+    std::vector<myfloat> h_dense(numCols * denseCols);
     for (int i = 0; i < numCols * denseCols; ++i) {
-        h_dense[i] = i % 101; //static_cast<float>(rand()) / RAND_MAX;  // Random initialization
+        h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     }
 
-    std::vector<float> c_dense(numRows * denseCols);
+    std::vector<myfloat> c_dense(numRows * denseCols);
     for (int i = 0; i < numRows * denseCols; ++i) {
-        c_dense[i] = 0; //static_cast<float>(rand()) / RAND_MAX;  // Random initialization
+        c_dense[i] = 0; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     }
 
-    std::vector<float> c_result(numRows * denseCols);
+    std::vector<myfloat> c_result(numRows * denseCols);
 
     int   A_num_rows      = numRows;
     int   A_num_cols      = numCols;
@@ -208,43 +210,43 @@ int main(int argc, char* argv[]) {
     int* hA_csrOffsets = &csrOffsets[0];
     // std::copy(csrOffsets.begin(), csrOffsets.end(), hA_csrOffsets);
     int*   hA_columns    = &csrColumns[0]; //{ 0, 2, 3, 1, 0, 2, 3, 1, 3 };
-    float* hA_values     = &csrValues[0]; //{ 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+    myfloat* hA_values     = &csrValues[0]; //{ 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
                           //    6.0f, 7.0f, 8.0f, 9.0f };
-    float* hB            = &h_dense[0];//{ 1.0f,  2.0f,  3.0f,  4.0f,
+    myfloat* hB            = &h_dense[0];//{ 1.0f,  2.0f,  3.0f,  4.0f,
                            //   5.0f,  6.0f,  7.0f,  8.0f,
                            //   9.0f, 10.0f, 11.0f, 12.0f };
-    float* hC            = &c_dense[0]; //{ 0.0f, 0.0f, 0.0f, 0.0f,
+    myfloat* hC            = &c_dense[0]; //{ 0.0f, 0.0f, 0.0f, 0.0f,
                             //   0.0f, 0.0f, 0.0f, 0.0f,
                             //   0.0f, 0.0f, 0.0f, 0.0f };
-    float* hC_result     = &c_result[0]; //{ 19.0f,  8.0f,  51.0f,  52.0f,
+    myfloat* hC_result     = &c_result[0]; //{ 19.0f,  8.0f,  51.0f,  52.0f,
                             //   43.0f, 24.0f, 123.0f, 120.0f,
                             //   67.0f, 40.0f, 195.0f, 188.0f };
-    float alpha           = 1.0f;
-    float beta            = 0.0f;
+    myfloat alpha           = 1.0f;
+    myfloat beta            = 0.0f;
 
 
 
     //--------------------------------------------------------------------------
     // Device memory management
     int   *dA_csrOffsets, *dA_columns;
-    float *dA_values, *dB, *dC;
+    myfloat *dA_values, *dB, *dC;
     CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(float))  )
-    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(myfloat))  )
+    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(myfloat)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(myfloat)) )
 
     CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(myfloat),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(myfloat),
                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(myfloat),
                            cudaMemcpyHostToDevice) )
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
@@ -315,7 +317,7 @@ int main(int argc, char* argv[]) {
 
     //--------------------------------------------------------------------------
     // device result check
-    CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(float),
+    CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(myfloat),
                            cudaMemcpyDeviceToHost) )
     int correct = 1;
     // for (int i = 0; i < A_num_rows; i++) {
