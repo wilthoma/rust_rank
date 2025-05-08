@@ -301,7 +301,7 @@ int main(int argc, char* argv[]) {
 
 
     cublasHandle_t blashandle;
-    CHECK_CUBLAS(cublasCreate(&blashandle));
+    CUBLAS_CHECK(cublasCreate(&blashandle));
 
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create sparse matrix A in CSR format
