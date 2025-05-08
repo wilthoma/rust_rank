@@ -78,7 +78,7 @@
     }                                                                          \
 }
 
-const int THESMALLPRIME = 3323;
+// const int THESMALLPRIME = 3323;
 
 // typedef float myfloat;
 typedef double myfloat;
@@ -224,7 +224,7 @@ int main(int argc, char* argv[]) {
     int   B_num_cols      = denseCols;
     int   ldb             = B_num_rows;
     int   ldc             = A_num_rows;
-    int ldd = A_num_rows;
+    // int ldd = A_num_rows;
     int   B_size          = ldb * B_num_cols;
     int   C_size          = ldc * B_num_cols;
     int* hA_csrOffsets = &csrOffsets[0];
@@ -318,11 +318,57 @@ int main(int argc, char* argv[]) {
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
+        // Create dense matrix D for the result of the second multiplication
+        myfloat *dD;
+        int D_size = A_num_rows * B_num_cols;
+        CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
+        CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
+
+        // Create dense matrix descriptor for D
+        cusparseDnMatDescr_t matD;
+        CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_rows, B_num_cols, ldc, dD,
+                                           CUDA_FMT, CUSPARSE_ORDER_COL));
+
+        // Execute SpMM for the second multiplication (matA^T * matC -> matD)
+        CHECK_CUSPARSE(cusparseSpMM(handle,
+                                    CUSPARSE_OPERATION_TRANSPOSE,
+                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                    &alpha, matA, matC, &beta, matD, CUDA_FMT,
+                                    CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
+
+        // Copy the result from device to host
+        // std::vector<myfloat> d_result(A_num_rows * B_num_cols);
+        // CHECK_CUDA(cudaMemcpy(d_result.data(), dD, D_size * sizeof(myfloat),
+        //                       cudaMemcpyDeviceToHost));
+
+
+
+
+    // execute preprocess (optional)
+    // CHECK_CUSPARSE( cusparseSpMM_preprocess(
+    //     handle,
+    //     CUSPARSE_OPERATION_TRANSPOSE,
+    //     CUSPARSE_OPERATION_NON_TRANSPOSE,
+    //     &alpha, matA, matC, &beta, matC, CUDA_FMT,
+    //     CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+
+    // // execute SpMM
+    // CHECK_CUSPARSE( cusparseSpMM(handle,
+    //         CUSPARSE_OPERATION_NON_TRANSPOSE,
+    //         CUSPARSE_OPERATION_NON_TRANSPOSE,
+    //         &alpha, matA, matB, &beta, matC, CUDA_FMT,
+    //         CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+
+
+
     CHECK_CUDA(cudaDeviceSynchronize());
     // destroy matrix/vector descriptors
     CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
     CHECK_CUSPARSE( cusparseDestroyDnMat(matB) )
     CHECK_CUSPARSE( cusparseDestroyDnMat(matC) )
+    // Clean up the dense matrix descriptor for D
+    CHECK_CUSPARSE(cusparseDestroyDnMat(matD));
+
     CHECK_CUSPARSE( cusparseDestroy(handle) )
 
     CHECK_CUDA(cudaEventRecord(stop, 0));
@@ -375,5 +421,6 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA( cudaFree(dA_values) )
     CHECK_CUDA( cudaFree(dB) )
     CHECK_CUDA( cudaFree(dC) )
+    CHECK_CUDA(cudaFree(dD));
     return EXIT_SUCCESS;
 }
