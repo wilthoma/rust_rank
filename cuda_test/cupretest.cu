@@ -140,7 +140,8 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
 
 // Define your function here (e.g., increment each element)
 __device__ float my_function(myfloat input) {
-    return __int2double_rn(__double2int_rn(input) % THESMALLPRIME);
+    //return __int2double_rn(__double2int_rn(input) % THESMALLPRIME);
+    return fmod(input, THESMALLPRIME);
 }
   
 // CUDA kernel to apply the function
