@@ -347,7 +347,7 @@ int main(int argc, char* argv[]) {
     cusparseDnMatDescr_t matSp;
     CHECK_CUSPARSE(cusparseCreateDnMat(&matSp, B_num_cols, B_num_cols, ldsp, dSp,
                                         CUDA_FMT, CUSPARSE_ORDER_COL));
-
+    std::vector<myfloat> hSp(Sp_size);
 
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
@@ -394,6 +394,17 @@ int main(int argc, char* argv[]) {
         CUBLAS_CHECK(
             cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, B_num_cols, B_num_cols, A_num_cols, &alpha, dD, A_num_cols, dD, A_num_cols, &beta, dSp, B_num_cols));
         
+
+            // Copy the device buffer dSp to a local host buffer
+            CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
+        
+            // print the first 10 entries of the result
+            std::cout << "dSp (first 10 entries): ";
+            for (int i = 0; i < 10 && i < Sp_size; ++i) {
+                std::cout << hSp[i] << " ";
+            }
+            std::cout << std::endl;
+
         // CHECK_CUBLAS(cublasGemmEx(
         //     handle,
         //     CUBLAS_OP_T, CUBLAS_OP_N, // transA = Dᵗ, transB = D
