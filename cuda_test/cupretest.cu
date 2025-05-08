@@ -170,6 +170,7 @@ int main(int argc, char* argv[]) {
     load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
     coo_matrix_to_csr(numRows, rowIndices, colIndices, values, csrOffsets, csrColumns, csrValues);
 
+    std::cout << numRows <<"x" << numCols << "Matrix loaded from file:" << argv[1] << "with nnz=" << nnz << std::endl;
 
     // Random dense matrix for multiplication
     int denseCols = 10;  // Example: Result matrix column size
