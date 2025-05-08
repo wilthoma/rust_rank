@@ -323,10 +323,11 @@ int main(int argc, char* argv[]) {
         int D_size = A_num_cols * B_num_cols;
         CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
         CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
+        int ldd = A_num_cols; // Leading dimension of D
 
         // Create dense matrix descriptor for D
         cusparseDnMatDescr_t matD;
-        CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_cols, B_num_cols, ldc, dD,
+        CHECK_CUSPARSE(cusparseCreateDnMat(&matD, A_num_cols, B_num_cols, ldd, dD,
                                            CUDA_FMT, CUSPARSE_ORDER_COL));
 
         // Execute SpMM for the second multiplication (matA^T * matC -> matD)
