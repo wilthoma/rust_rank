@@ -392,7 +392,7 @@ int main(int argc, char* argv[]) {
                                         CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
         CUBLAS_CHECK(
-            cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, B_num_cols, B_num_cols, A_num_cols, &alpha, dA, A_num_cols, dB, A_num_cols, &beta, dSp, B_num_cols));
+            cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, B_num_cols, B_num_cols, A_num_cols, &alpha, dD, A_num_cols, dD, A_num_cols, &beta, dSp, B_num_cols));
         
         // CHECK_CUBLAS(cublasGemmEx(
         //     handle,
