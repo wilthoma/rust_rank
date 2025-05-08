@@ -132,7 +132,7 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
 
 
 
-int main(void) {
+int main(int argc, char* argv[]) {
     // Host problem definition
     int   A_num_rows      = 4;
     int   A_num_cols      = 4;
