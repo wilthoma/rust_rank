@@ -161,7 +161,7 @@ int main(int argc, char* argv[]) {
 
     // load matrix from file
     if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <matrix_file>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns>" << std::endl;
         return -1;
     }
     std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns;
@@ -173,10 +173,10 @@ int main(int argc, char* argv[]) {
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
     // Random dense matrix for multiplication
-    int denseCols = 10;  // Example: Result matrix column size
+    int denseCols = atoi[argv[2]];  // Example: Result matrix column size
     std::vector<float> h_dense(numCols * denseCols);
     for (int i = 0; i < numCols * denseCols; ++i) {
-        h_dense[i] = 1; //static_cast<float>(rand()) / RAND_MAX;  // Random initialization
+        h_dense[i] = i % 101; //static_cast<float>(rand()) / RAND_MAX;  // Random initialization
     }
 
     std::vector<float> c_dense(numRows * denseCols);
