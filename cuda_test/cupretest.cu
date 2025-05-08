@@ -134,30 +134,30 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
 
 int main(int argc, char* argv[]) {
     // Host problem definition
-    int   A_num_rows      = 4;
-    int   A_num_cols      = 4;
-    int   A_nnz           = 9;
-    int   B_num_rows      = A_num_cols;
-    int   B_num_cols      = 3;
-    int   ldb             = B_num_rows;
-    int   ldc             = A_num_rows;
-    int   B_size          = ldb * B_num_cols;
-    int   C_size          = ldc * B_num_cols;
-    int   hA_csrOffsets[] = { 0, 3, 4, 7, 9 };
-    int   hA_columns[]    = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
-    float hA_values[]     = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
-                              6.0f, 7.0f, 8.0f, 9.0f };
-    float hB[]            = { 1.0f,  2.0f,  3.0f,  4.0f,
-                              5.0f,  6.0f,  7.0f,  8.0f,
-                              9.0f, 10.0f, 11.0f, 12.0f };
-    float hC[]            = { 0.0f, 0.0f, 0.0f, 0.0f,
-                              0.0f, 0.0f, 0.0f, 0.0f,
-                              0.0f, 0.0f, 0.0f, 0.0f };
-    float hC_result[]     = { 19.0f,  8.0f,  51.0f,  52.0f,
-                              43.0f, 24.0f, 123.0f, 120.0f,
-                              67.0f, 40.0f, 195.0f, 188.0f };
-    float alpha           = 1.0f;
-    float beta            = 0.0f;
+    // int   A_num_rows      = 4;
+    // int   A_num_cols      = 4;
+    // int   A_nnz           = 9;
+    // int   B_num_rows      = A_num_cols;
+    // int   B_num_cols      = 3;
+    // int   ldb             = B_num_rows;
+    // int   ldc             = A_num_rows;
+    // int   B_size          = ldb * B_num_cols;
+    // int   C_size          = ldc * B_num_cols;
+    // int   hA_csrOffsets[] = { 0, 3, 4, 7, 9 };
+    // int   hA_columns[]    = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
+    // float hA_values[]     = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+    //                           6.0f, 7.0f, 8.0f, 9.0f };
+    // float hB[]            = { 1.0f,  2.0f,  3.0f,  4.0f,
+    //                           5.0f,  6.0f,  7.0f,  8.0f,
+    //                           9.0f, 10.0f, 11.0f, 12.0f };
+    // float hC[]            = { 0.0f, 0.0f, 0.0f, 0.0f,
+    //                           0.0f, 0.0f, 0.0f, 0.0f,
+    //                           0.0f, 0.0f, 0.0f, 0.0f };
+    // float hC_result[]     = { 19.0f,  8.0f,  51.0f,  52.0f,
+    //                           43.0f, 24.0f, 123.0f, 120.0f,
+    //                           67.0f, 40.0f, 195.0f, 188.0f };
+    // float alpha           = 1.0f;
+    // float beta            = 0.0f;
 
     // load matrix from file
     if (argc < 2) {
