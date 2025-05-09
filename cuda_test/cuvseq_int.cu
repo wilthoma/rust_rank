@@ -106,6 +106,9 @@
 const int THESMALLPRIME = 3323;
 const int DOT_CHUNK_SIZE = 64;
 
+
+#define USE_TIC 0
+
 #define USE_DOUBLE 0
 #if USE_DOUBLE
     typedef double myfloat;
@@ -269,18 +272,22 @@ __global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
 auto tic_start_time= std::chrono::high_resolution_clock::now();
 
 
-void tic() {
+inline void tic() {
+    #if USE_TIC
     // Start the timer
     cudaDeviceSynchronize();
     tic_start_time = std::chrono::high_resolution_clock::now();
+    #endif
 }
-void toc(const std::string& msg = "") {
+inline void toc(const std::string& msg = "") {
+    #if USE_TIC
     // Stop the timer
     cudaDeviceSynchronize();
     auto end_time = std::chrono::high_resolution_clock::now();
     // Calculate the elapsed time in milliseconds
     auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - tic_start_time).count();
     std::cout << "Elapsed time: " << elapsed_time << " ms. " << msg << std::endl;
+    #endif
 }
 
 void transpose_csr_matrix(
