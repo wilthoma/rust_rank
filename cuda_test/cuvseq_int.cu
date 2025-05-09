@@ -821,8 +821,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Rescale the csr matrices
-    std::vector<myfloat> scale_factors_rows(numRows, true);
-    std::vector<myfloat> scale_factors_cols(numCols, true);
+    std::vector<myfloat> scale_factors_rows = generate_random_vector(numRows, true);
+    std::vector<myfloat> scale_factors_cols = generate_random_vector(numCols, true);
     csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
     csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
     csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
