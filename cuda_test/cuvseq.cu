@@ -220,6 +220,10 @@ void transpose_csr_matrix(
     int nnzc = col_indices.size();
     for (int i = 0; i < nnzc; ++i) {
         int col = col_indices[i];
+        if (col <0 || col >= n_cols) {
+            std::cerr << "Error: Column index out of bounds." << std::endl;
+            exit(-1);
+        }
         nnz_per_col[col]++;
     }
 
@@ -235,7 +239,7 @@ void transpose_csr_matrix(
     values_t.resize(nnz);
     col_indices_t.resize(nnz);
 
-    std::vector<int> next_insert_pos = row_ptr_t;
+    std::vector<int> next_insert_pos(tmprow_ptr_t.begin(), tmprow_ptr_t.end());
 
     // Step 4: Populate the transposed matrix
     for (int row = 0; row < n_rows; ++row) {
