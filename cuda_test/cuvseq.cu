@@ -504,6 +504,7 @@ int main(int argc, char* argv[]) {
     float milliseconds = 0;
     CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
     std::cout << "SpMM operation runtime: " << milliseconds << " ms" << std::endl;
+    std::cout << "Total throughput: " << hSp_list.size() * B_num_cols * 1e3 / milliseconds  << "/s." << std::endl;
 
     CHECK_CUDA(cudaEventDestroy(start));
     CHECK_CUDA(cudaEventDestroy(stop));
