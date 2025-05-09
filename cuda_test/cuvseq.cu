@@ -570,6 +570,9 @@ int main(int argc, char* argv[]) {
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
         );
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess)
+            printf("CUDA Error: %s\n", cudaGetErrorString(err));
         toc("Handcrafted 2d...:");
         tic();
         CHECK_CUSPARSE( cusparseSpMM(handle,
