@@ -105,7 +105,8 @@
 // typedef float myfloat;
 typedef double myfloat;
 #define CUDA_FMT CUDA_R_64F
-#define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_CSR_ALG3
+// #define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_CSR_ALG3
+#define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_ALG_DEFAULT
 
 void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
     std::ifstream file(filename);  // Make sure to include <fstream>
