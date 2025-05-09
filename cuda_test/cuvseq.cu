@@ -170,6 +170,35 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
     }
 }
 
+bool is_csr_valid(int numRows, int numCols, const std::vector<int>& csrOffsets, const std::vector<int>& csrColumns, const std::vector<myfloat>& csrValues) {
+    // Check if the CSR format is valid
+    if (csrOffsets.size() != numRows + 1) {
+        std::cerr << "Invalid CSR offsets size." << std::endl;
+        return false;
+    }
+    if (csrOffsets[0] != 0) {
+        std::cerr << "Invalid CSR offsets: first element should be 0." << std::endl;
+        return false;
+    }
+    for (int i = 1; i <= numRows; ++i) {
+        if (csrOffsets[i] < csrOffsets[i - 1]) {
+            std::cerr << "Invalid CSR offsets: non-decreasing property violated." << std::endl;
+            return false;
+        }
+    }
+    for (int i = 0; i < csrValues.size(); ++i) {
+        if (csrColumns[i] < 0 || csrColumns[i] >= numCols) {
+            std::cerr << "Invalid CSR columns: out of bounds." << std::endl;
+            return false;
+        }
+    }
+    if (csrValues.size() != csrColumns.size()) {
+        std::cerr << "Invalid CSR values: size mismatch." << std::endl;
+        return false;
+    }
+    return true;
+}
+
 // Define your function here (e.g., increment each element)
 __device__ myfloat my_function(myfloat input) {
     // return __int2double_rn(__double2int_rn(input) % THESMALLPRIME);
@@ -374,6 +403,13 @@ int main(int argc, char* argv[]) {
     std::cout << "COO to CSR conversion runtime: " << convertMilliseconds << " ms" << std::endl;
 
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
+
+    if is_csr_valid(numRows, numCols, csrOffsets, csrColumns, csrValues) {
+        std::cout << "CSR matrix is valid." << std::endl;
+    } else {
+        std::cerr << "CSR matrix is invalid." << std::endl;
+        return -1;
+    }
 
     transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
     std::cout << "CSR matrix transposed." << std::endl;
