@@ -371,10 +371,11 @@ int main(int argc, char* argv[]) {
     std::cout << "Transposed matrix size: " << numCols << "x" << numRows << std::endl;
     std::cout << "Transposed matrix nnz: " << csrValuesT.size() << std::endl;
 
-    
+    std::cout<< "A";
 
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
+    std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
     std::vector<myfloat> h_dense(numCols * denseCols);
     for (int i = 0; i < numCols * denseCols; ++i) {
         h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
