@@ -352,10 +352,6 @@ static std::vector<std::vector<myfloat>> hSp_list;
 
 int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
     return 0;
-    myfloat alpha           = 1.0f;
-    myfloat beta            = 0.0f;
-    // float alpha = 1.0f;
-    // float beta = 0.0f;
     int Sp_size = n_dense_vectors * n_dense_vectors;
     std::vector<myfloat> hSp(Sp_size);
 
@@ -463,8 +459,6 @@ int main(int argc, char* argv[]) {
     myfloat* hB            = &h_dense[0];
     myfloat* hC            = &c_dense[0]; 
     myfloat* hC_result     = &c_result[0]; 
-    myfloat alpha           = 1.0f;
-    myfloat beta            = 0.0f;
 
 
     std::cout<< "A";
