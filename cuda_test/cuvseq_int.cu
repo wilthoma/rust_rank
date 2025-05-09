@@ -535,7 +535,7 @@ int main(int argc, char* argv[]) {
     int D_size = A_num_cols * B_num_cols;
     CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
     CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
-    int ldd = A_num_cols; // Leading dimension of D
+    // int ldd = A_num_cols; // Leading dimension of D
 
     
 
@@ -543,7 +543,7 @@ int main(int argc, char* argv[]) {
     int Sp_size = B_num_cols * B_num_cols;
     CHECK_CUDA(cudaMalloc((void**)&dSp, Sp_size * sizeof(myfloat)));
     CHECK_CUDA(cudaMemset(dSp, 0, Sp_size * sizeof(myfloat)));
-    int ldsp = B_num_cols; // Leading dimension of D
+    // int ldsp = B_num_cols; // Leading dimension of D
 
     
     
