@@ -172,7 +172,11 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
 // Define your function here (e.g., increment each element)
 __device__ myfloat my_function(myfloat input) {
     // return __int2double_rn(__double2int_rn(input) % THESMALLPRIME);
-    return fmod(input, 3323.0f);
+    #if USE_DOUBLE
+        return fmod(input, 3323.0);
+    #else
+        return fmod(input, 3323.0f);
+    #endif
 }
   
 // CUDA kernel to apply the function
@@ -262,7 +266,7 @@ int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, m
     #else
         CUBLAS_CHECK(cublasSgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
     #endif
-    
+
         apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
 
         // Copy the device buffer dSp to a local host buffer
