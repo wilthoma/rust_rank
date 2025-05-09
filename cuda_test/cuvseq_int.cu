@@ -554,7 +554,7 @@ std::vector<std::vector<myfloat>> reshape_to_vector_of_vectors(const std::vector
 
     for (int i = 0; i < num_vectors; ++i) {
         for (int j = 0; j < N; ++j) {
-            result[i][j] = input[j * N + i];
+            result[i][j] = input[j * num_vectors + i];
         }
     }
 
@@ -664,6 +664,7 @@ int save_all_data(
 
     // translate into vector of vectors
     std::vector<std::vector<myfloat>> cur_B = reshape_to_vector_of_vectors(hB, n_cols);
+    std::cout << "A" << std::endl;
     std::vector<std::vector<myfloat>> ini_B = reshape_to_vector_of_vectors(initial_B, n_cols);
 std::cout << "A" << std::endl;
     // select upper triangular part of sp_list
