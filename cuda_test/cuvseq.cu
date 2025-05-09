@@ -217,12 +217,15 @@ void transpose_csr_matrix(
 
     // Step 1: Count non-zero elements per column
     std::vector<int> nnz_per_col(n_cols, 0);
-    for (const auto& col : col_indices) {
+    int nnzc = col_indices.size();
+    for (int i = 0; i < nnzc; ++i) {
+        int col = col_indices[i];
         nnz_per_col[col]++;
     }
 
     // Step 2: Compute row_ptr for transposed matrix
-    row_ptr_t.resize(n_cols + 1, 0);
+    std::vector<int> tmprow_ptr_t(n_cols+1, 0);
+    // row_ptr_t.resize(n_cols + 1, 0);
     for (int i = 0; i < n_cols; ++i) {
         row_ptr_t[i + 1] = row_ptr_t[i] + nnz_per_col[i];
     }
@@ -249,6 +252,8 @@ void transpose_csr_matrix(
             next_insert_pos[col]++;
         }
     }
+
+    row_ptr_t = std::move(tmprow_ptr_t);
 }
 
 
@@ -366,7 +371,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
-    //transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
+    transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
     std::cout << "CSR matrix transposed." << std::endl;
     std::cout << "Transposed matrix size: " << numCols << "x" << numRows << std::endl;
     std::cout << "Transposed matrix nnz: " << csrValuesT.size() << std::endl;
