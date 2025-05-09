@@ -506,6 +506,39 @@ void csr_rowrescale(
     }
 }
 
+struct CsrMatrix {
+    int numRows;
+    int numCols;
+    std::vector<int> rowOffsets;
+    std::vector<int> colIndices;
+    std::vector<myfloat> values;
+
+    CsrMatrix(int rows, int cols, const std::vector<int>& offsets, const std::vector<int>& indices, const std::vector<myfloat>& vals)
+        : numRows(rows), numCols(cols), rowOffsets(offsets), colIndices(indices), values(vals) {}
+}
+
+void test_singlemat_product(CsrMatrix &matA, myfloat *dB)
+{
+    // take a product with a vector of ones and see the result
+    std::vector<myfloat> vecA(matA.numCols, 1);
+    // 
+
+}
+
+void display_vector(const std::vector<myfloat>& vec, int max_elements = 10) {
+    std::cout << "Vector: ";
+    for (int i = 0; i < std::min(max_elements, (int)vec.size()); ++i) {
+        std::cout << vec[i] << " ";
+    }
+    std::cout << std::endl;
+}
+
+void display_cuda_buffer(myfloat* d_buffer, int size, int max_elements = 10) {
+    std::vector<myfloat> h_buffer(size);
+    cudaMemcpy(h_buffer.data(), d_buffer, size * sizeof(myfloat), cudaMemcpyDeviceToHost);
+    display_vector(h_buffer, max_elements);
+}
+
 int main(int argc, char* argv[]) {
 
     // load matrix from file
@@ -552,11 +585,11 @@ int main(int argc, char* argv[]) {
     }
 
     // Rescale the csr matrices
-    std::vector<myfloat> scale_factors_rows(numRows, true);
-    std::vector<myfloat> scale_factors_cols(numCols, true);
-    csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
-    csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
-    csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
+    // std::vector<myfloat> scale_factors_rows(numRows, true);
+    // std::vector<myfloat> scale_factors_cols(numCols, true);
+    // csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
+    // csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
+    // csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
 
     std::cout<< "A";
 
@@ -564,6 +597,7 @@ int main(int argc, char* argv[]) {
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
     std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
+    std::vector<myfloat> h_dense(numCols * denseCols, 1);
     // for (int i = 0; i < numCols * denseCols; ++i) {
     //     h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     // }
@@ -681,6 +715,7 @@ int main(int argc, char* argv[]) {
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
         );
+        display_cuda_buffer(dC, C_size, 10);
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess)
             printf("CUDA Error: %s\n", cudaGetErrorString(err));
@@ -693,6 +728,7 @@ int main(int argc, char* argv[]) {
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
         );
+        display_cuda_buffer(dC, C_size, 10);
         err = cudaGetLastError();
         if (err != cudaSuccess)
             printf("CUDA Error: %s\n", cudaGetErrorString(err));
