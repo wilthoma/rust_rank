@@ -434,8 +434,10 @@ int main(int argc, char* argv[]) {
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
         toc("apply_function_kernel D");
         
+        tic();
         compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols);
         compute_and_push_sp(blashandle, dD, dD, dSp, B_num_cols, A_num_cols);
+        toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
         CHECK_CUSPARSE( cusparseSpMM(handle,
