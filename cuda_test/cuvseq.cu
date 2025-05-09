@@ -281,6 +281,33 @@ __global__ void csr_spmm_naive(
     }
 }
 
+__global__ void csr_spmm_2d(
+    int M, int N,
+    const int *__restrict__ csr_row_ptr,
+    const int *__restrict__ csr_col_idx,
+    const myfloat *__restrict__ csr_val,
+    const myfloat *__restrict__ B, // [K x N]
+    myfloat *__restrict__ C        // [M x N]
+) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row >= M || col >= N) return;
+
+    myfloat sum = 0.0;
+    int start = csr_row_ptr[row];
+    int end = csr_row_ptr[row + 1];
+
+    for (int idx = start; idx < end; idx++) {
+        int k = csr_col_idx[idx];
+        myfloat a = csr_val[idx];
+        myfloat b = B[k * N + col]; // column-major access of B
+        sum += a * b;
+    }
+
+    C[row * N + col] = sum;
+}
+
 
 static std::vector<std::vector<myfloat>> hSp_list;
 
@@ -534,7 +561,16 @@ int main(int argc, char* argv[]) {
             dB, dC
         );
         toc("Handcrafted...:");
+        tic();
+        dim3 blockDim(16, 16);
+        dim3 gridDim((B_num_cols + blockDim.x - 1) / blockDim.x,
+                    (A_num_rows + blockDim.y - 1) / blockDim.y);
 
+        csr_spmm_2d<<<gridDim, blockDim>>>(
+            A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
+            dB, dC
+        );
+        toc("Handcrafted 2d...:");
         tic();
         CHECK_CUSPARSE( cusparseSpMM(handle,
             CUSPARSE_OPERATION_NON_TRANSPOSE,
