@@ -364,21 +364,6 @@ int main(int argc, char* argv[]) {
     // Create dense matrix C
     CHECK_CUSPARSE( cusparseCreateDnMat(&matC, A_num_rows, B_num_cols, ldc, dC,
                                         CUDA_FMT, CUSPARSE_ORDER_COL) )
-    // allocate an external buffer if needed
-    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
-                                 handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 &alpha, matA, matB, &beta, matC, CUDA_FMT,
-                                 CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
-    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
-    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
-        handle,
-        CUSPARSE_OPERATION_TRANSPOSE,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matC, &beta, matD, CUDA_FMT,
-        CUSPARSE_SPMM_CSR_ALG2, &bufferSize2) )
-    CHECK_CUDA( cudaMalloc(&dBuffer2, bufferSize2) )
 
     // Create dense matrix D for the result of the second multiplication
     myfloat *dD;
@@ -403,6 +388,22 @@ int main(int argc, char* argv[]) {
     CHECK_CUSPARSE(cusparseCreateDnMat(&matSp, B_num_cols, B_num_cols, ldsp, dSp,
                                         CUDA_FMT, CUSPARSE_ORDER_COL));
     // std::vector<myfloat> hSp(Sp_size);
+
+    // allocate an external buffer if needed
+    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
+        handle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha, matA, matB, &beta, matC, CUDA_FMT,
+        CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
+    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
+    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
+        handle,
+        CUSPARSE_OPERATION_TRANSPOSE,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha, matA, matC, &beta, matD, CUDA_FMT,
+        CUSPARSE_SPMM_CSR_ALG2, &bufferSize2) )
+    CHECK_CUDA( cudaMalloc(&dBuffer2, bufferSize2) )
 
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
