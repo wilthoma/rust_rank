@@ -189,7 +189,7 @@ void toc() {
     std::cout << "Elapsed time: " << elapsed_time << " ms" << std::endl;
 }
 
-void compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen, std::vector<myfloat> &hSp) {
+int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen, std::vector<myfloat> &hSp) {
     myfloat alpha           = 1.0f;
     myfloat beta            = 0.0f;
     int Sp_size = n_dense_vectors * n_dense_vectors;
@@ -207,7 +207,7 @@ void compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, 
             std::cout << hSp[i] << " ";
         }
         std::cout << std::endl;
-
+        return 0;
 }
 
 int main(int argc, char* argv[]) {
