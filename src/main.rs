@@ -425,12 +425,16 @@ fn main() {
         tm = ttm;
         tn = ttn;
 
+        println!("File data: prime {}, matrix size {}x{}, num_v {}.", prime, tm, tn, tnum_v);
+        println!("seq len = {}", seq.len());
+        println!("seq[0].len() = {}", seq[0].len());
+
         // num_u = tnum_u;
         if tnum_v != num_v {
             println!("Number of workers * lanes does not match the size of V in the saved file! {} vs {}. Exiting.", tnum_v, num_v);
             std::process::exit(1);
         }
-        println!("Loaded state from file {} with {} entries. Note: parameteer in wdm file take precedence over those passed via command line,", &wdm_filename, seq[0].len());
+        println!("Loaded state from file {} with {} entries. Note: parameter in wdm file take precedence over those passed via command line,", &wdm_filename, seq[0].len());
         initialized = true;
     }
 
