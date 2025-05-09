@@ -568,6 +568,9 @@ fn main() {
 
     } // end of if !only_load_wdm
 
+    println!("Number of vectors: {}", seq.len());
+    println!("Sequence length: {}", seq[0].len());
+
     // convert seq to a vector of u64
     println!("Sequence computed, running Berlekamp-Massey...");
     // let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
