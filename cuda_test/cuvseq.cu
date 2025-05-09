@@ -332,8 +332,8 @@ __global__ void csr_spmm_2d(
     const myfloat *__restrict__ B, // [K x N]
     myfloat *__restrict__ C        // [M x N]
 ) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (row >= M || col >= N) return;
 
@@ -624,18 +624,21 @@ int main(int argc, char* argv[]) {
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
         );
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess)
+            printf("CUDA Error: %s\n", cudaGetErrorString(err));
         toc("Handcrafted...:");
         tic();
         dim3 blockDim(16, 32);
-        dim3 gridDim((B_num_cols + blockDim.x - 1) / blockDim.x,
-                    (A_num_rows + blockDim.y - 1) / blockDim.y);
+        dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
+                    (B_num_cols + blockDim.y - 1) / blockDim.y);
         std::cout << "gridDim = ("<< gridDim.x<<"x"<< gridDim.y;
         std::cout << ") blockDim = ("<< blockDim.x<<"x"<< blockDim.y<<")" << std::endl;
         csr_spmm_2d<<<gridDim, blockDim>>>(
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
         );
-        cudaError_t err = cudaGetLastError();
+        err = cudaGetLastError();
         if (err != cudaSuccess)
             printf("CUDA Error: %s\n", cudaGetErrorString(err));
         toc("Handcrafted 2d...:");
