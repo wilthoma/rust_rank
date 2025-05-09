@@ -207,7 +207,7 @@ __device__ myfloat my_function(myfloat input) {
         return fmod(input, 3323.0);
     #else
         //return fmod(input, 3323.0f);
-        return input % THESMALLPRIME
+        return input % THESMALLPRIME;
     #endif
 }
   
