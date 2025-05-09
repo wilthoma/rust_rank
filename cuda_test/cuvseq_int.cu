@@ -49,7 +49,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h> // cudaMalloc, cudaMemcpy, etc.
-#include <cusparse.h>         // cusparseSpMM
 #include <stdio.h>            // printf
 #include <stdlib.h>           // EXIT_FAILURE
 #include <iostream>
@@ -57,9 +56,9 @@
 #include <cassert>
 #include <fstream>  // Include fstream for file input
 #include <chrono>
-#include <cublas_v2.h>
 // #include "cublas_utils.h"
-
+#include <random>
+#include <algorithm>
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -407,6 +406,21 @@ int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_ve
         return 0;
 }
 
+
+
+std::vector<myfloat> generate_random_vector(int size, bool only_nonzero=false) {
+    std::vector<myfloat> random_vector(size);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<myfloat> dis(only_nonzero? 1 : 0, THESMALLPRIME - 1);
+
+    for (int i = 0; i < size; ++i) {
+        random_vector[i] = dis(gen);
+    }
+
+    return random_vector;
+}
+
 int main(int argc, char* argv[]) {
 
     // load matrix from file
@@ -456,16 +470,16 @@ int main(int argc, char* argv[]) {
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
-    std::vector<myfloat> h_dense(numCols * denseCols);
-    for (int i = 0; i < numCols * denseCols; ++i) {
-        h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
-    }
+    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
+    // for (int i = 0; i < numCols * denseCols; ++i) {
+    //     h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
+    // }
     std::cout<< "A";
 
-    std::vector<myfloat> c_dense(numRows * denseCols);
-    for (int i = 0; i < numRows * denseCols; ++i) {
-        c_dense[i] = 0; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
-    }
+    std::vector<myfloat> c_dense(numRows * denseCols, 0);
+    // for (int i = 0; i < numRows * denseCols; ++i) {
+    //     c_dense[i] = 0; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
+    // }
 
     std::cout<< "A";
 
