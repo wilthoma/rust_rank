@@ -408,7 +408,7 @@ int main(int argc, char* argv[]) {
 
     compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);
 
-    for (int round=0;round<5;round++){
+    for (int round=0;round<100;round++){
         std::cout << "Round " << round << std::endl;
         // execute SpMM, multiply by A to get C
         CHECK_CUSPARSE( cusparseSpMM(handle,
