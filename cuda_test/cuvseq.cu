@@ -404,7 +404,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
-    if is_csr_valid(numRows, numCols, csrOffsets, csrColumns, csrValues) {
+    if (is_csr_valid(numRows, numCols, csrOffsets, csrColumns, csrValues)) {
         std::cout << "CSR matrix is valid." << std::endl;
     } else {
         std::cerr << "CSR matrix is invalid." << std::endl;
