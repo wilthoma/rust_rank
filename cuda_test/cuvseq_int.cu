@@ -110,6 +110,50 @@ const int DOT_CHUNK_SIZE = 64;
     typedef int32_t myfloat;
 #endif
 
+
+using namespace std;
+
+int mod_inv(int a, myfloat mod) {
+    int b = mod, u = 1, v = 0;
+    while (b) {
+        int t = a / b;
+        a -= t * b; swap(a, b);
+        u -= t * v; swap(u, v);
+    }
+    return (u % mod + mod) % mod;
+}
+
+vector<myfloat> berlekamp_massey(const vector<myfloat>& s, myfloat mod) {
+    vector<myfloat> C = {1}, B = {1};
+    int L = 0, m = 1, b = 1;
+
+    for (int n = 0; n < (int)s.size(); n++) {
+        int d = s[n];
+        for (int i = 1; i <= L; i++)
+            d = (d + 1LL * C[i] * s[n - i]) % mod;
+        if (d == 0) {
+            m++;
+            continue;
+        }
+        vector<myfloat> T = C;
+        int coef = 1LL * d * mod_inv(b, mod) % mod;
+        if ((int)C.size() < (int)(B.size() + m))
+            C.resize(B.size() + m);
+        for (int i = 0; i < (int)B.size(); i++)
+            C[i + m] = (C[i + m] - 1LL * coef * B[i] % mod + mod) % mod;
+        if (2 * L <= n) {
+            L = n + 1 - L;
+            B = T;
+            b = d;
+            m = 1;
+        } else {
+            m++;
+        }
+    }
+    return C;
+}
+
+
 void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
     std::ifstream file(filename);  // Make sure to include <fstream>
     if (!file) {
@@ -751,6 +795,34 @@ int main(int argc, char* argv[]) {
     std::cout << "Device to host copy runtime: " << copyMilliseconds << " ms" << std::endl;
     
     int correct = 1;
+
+    // check minimal polynomials 
+    // for (int i = 0; i < B_num_cols; i++) {
+    //     for (int j = 0; j < B_num_cols; j++) {
+    //         if (hSp_list[i][j] != hSp_list[i][j]) {
+    //             std::cout << "hSp_list[" << i << "][" << j << "] = " << hSp_list[i][j] << std::endl;
+    //             correct = 0; // direct floating point comparison is not reliable
+    //             break;
+    //         }
+    //     }
+    // }
+    int slen = hSp_list.size();
+    std::vector<myfloat> oneseq(slen,0);
+    for (int i = 0; i < B_num_cols; i++) {
+        for (int j = i; j < B_num_cols; j++) {
+            // collect the ij entries of hSp_list
+            for (int k = 0; k < slen; k++) {
+                oneseq[k] = hSp_list[k][i * B_num_cols + j];
+            }
+            // compute the minimal polynomial
+            std::vector<myfloat> coeffs = berlekamp_massey(oneseq, THESMALLPRIME);
+            std::cout << "Poly length: " << coeffs.size() << std::endl;
+            std::cout << "Poly coeffs: ";
+            for (int k = 0; k < min(coeffs.size(), 10); k++) {
+                std::cout << coeffs[k] << " ";
+            }
+        }
+    }
     // for (int i = 0; i < A_num_rows; i++) {
     //     for (int j = 0; j < B_num_cols; j++) {
     //         if (hC[i + j * ldc] != hC_result[i + j * ldc]) {
