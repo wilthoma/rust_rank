@@ -371,18 +371,22 @@ int main(int argc, char* argv[]) {
     std::cout << "Transposed matrix size: " << numCols << "x" << numRows << std::endl;
     std::cout << "Transposed matrix nnz: " << csrValuesT.size() << std::endl;
 
+    
+
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     std::vector<myfloat> h_dense(numCols * denseCols);
     for (int i = 0; i < numCols * denseCols; ++i) {
         h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     }
+    std::cout<< "A";
 
     std::vector<myfloat> c_dense(numRows * denseCols);
     for (int i = 0; i < numRows * denseCols; ++i) {
         c_dense[i] = 0; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     }
 
+    std::cout<< "A";
 
     std::vector<myfloat> c_result(numRows * denseCols);
 
@@ -407,7 +411,7 @@ int main(int argc, char* argv[]) {
     myfloat beta            = 0.0f;
 
 
-
+    std::cout<< "A";
     //--------------------------------------------------------------------------
     // Device memory management
     int   *dA_csrOffsets, *dA_columns, *dA_csrOffsetsT, *dA_columnsT;
@@ -420,7 +424,7 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA( cudaMalloc((void**) &dA_valuesT,  A_nnz * sizeof(myfloat))  )
     CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(myfloat)) )
     CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(myfloat)) )
-
+    std::cout<< "B";
     CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
@@ -439,6 +443,7 @@ int main(int argc, char* argv[]) {
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(myfloat),
                            cudaMemcpyHostToDevice) )
+                           std::cout<< "B";
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
