@@ -394,6 +394,12 @@ fn main() {
         std::process::exit(0);
     }
 
+    // check if filename end in .wdm
+    let only_load_wdm = filename.ends_with(".wdm") && std::path::Path::new(&wdm_filename).exists();
+    if only_load_wdm {
+        println!("Filename ends with .wdm, we only load {} and run sequence analysis.", filename);
+    }
+
     // preconditioners for the matrix
     let mut row_precond: Vec<MyInt> = vec![];
     let mut col_precond: Vec<MyInt> = vec![];
@@ -427,6 +433,8 @@ fn main() {
         println!("Loaded state from file {} with {} entries. Note: parameteer in wdm file take precedence over those passed via command line,", &wdm_filename, seq[0].len());
         initialized = true;
     }
+
+    if !only_load_wdm {
 
     // load the matrix file
     println!("Loading matrix from file {}...", filename);
@@ -558,7 +566,8 @@ fn main() {
         }
     }
 
-    
+    } // end of if !only_load_wdm
+
     // convert seq to a vector of u64
     println!("Sequence computed, running Berlekamp-Massey...");
     // let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
