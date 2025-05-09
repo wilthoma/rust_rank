@@ -587,6 +587,8 @@ fn main() {
         println!("Time taken for Berlekamp-Massey: {:?}", duration);
         println!("Berlekamp-Massey result: {:?}", bmres.len());
         println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
+    } else {
+        println!("Berlekamp-Massey not used....");
     }
     // println!("{:?}", bmres);
 
