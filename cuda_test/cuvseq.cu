@@ -105,6 +105,7 @@
 // typedef float myfloat;
 typedef double myfloat;
 #define CUDA_FMT CUDA_R_64F
+#define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_CSR_ALG3
 
 void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
     std::ifstream file(filename);  // Make sure to include <fstream>
@@ -402,7 +403,7 @@ int main(int argc, char* argv[]) {
         CUSPARSE_OPERATION_TRANSPOSE,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &alpha, matA, matC, &beta, matD, CUDA_FMT,
-        CUSPARSE_SPMM_CSR_ALG2, &bufferSize2) )
+        CUSPARSE_TRANS_ALGO, &bufferSize2) )
     CHECK_CUDA( cudaMalloc(&dBuffer2, bufferSize2) )
 
     CHECK_CUDA(cudaEventCreate(&start));
@@ -424,7 +425,7 @@ int main(int argc, char* argv[]) {
                                     CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
-                                    CUSPARSE_SPMM_CSR_ALG2, dBuffer2) )                    
+                                    CUSPARSE_TRANS_ALGO, dBuffer2) )                    
 
     compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);
 
@@ -448,7 +449,7 @@ int main(int argc, char* argv[]) {
                                     CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
-                                    CUSPARSE_SPMM_CSR_ALG2, dBuffer2));
+                                    CUSPARSE_TRANS_ALGO, dBuffer2));
 
         toc("SpMM A^T*C->D");
         tic();
@@ -472,7 +473,7 @@ int main(int argc, char* argv[]) {
             CUSPARSE_OPERATION_TRANSPOSE,
             CUSPARSE_OPERATION_NON_TRANSPOSE,
             &alpha, matA, matC, &beta, matB, CUDA_FMT,
-            CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
+            CUSPARSE_TRANS_ALGO, dBuffer2));
 
         apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         
