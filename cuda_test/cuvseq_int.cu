@@ -528,7 +528,7 @@ struct CsrMatrix {
 void display_vector(const std::vector<myfloat>& vec, int max_elements = 10) {
     std::cout << "Vector: ";
     for (int i = 0; i < std::min(max_elements, (int)vec.size()); ++i) {
-        std::cout << (vec[i]>0?vec[i]:vec[i]+THESMALLPRIME) << " ";
+        std::cout << (vec[i]>=0?vec[i]:vec[i]+THESMALLPRIME) << " ";
     }
     std::cout << std::endl;
 }
@@ -754,6 +754,7 @@ int main(int argc, char* argv[]) {
             dC, dD
         );
         toc("SpMM A^T*C->D");
+        display_cuda_buffer(dD, D_size, 10);
         tic();
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
         toc("apply_function_kernel D");
