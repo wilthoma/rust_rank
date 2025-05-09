@@ -407,7 +407,8 @@ __global__ void dense_gemm_TN_chunked3D(int n, int k,  // n = n_dense_vectors, k
     if (row < n && col < n) {
         myfloat acc = 0;
         for (int i = chunk_start; i < chunk_end; ++i) {
-            acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
+            acc += A[i * n + row] * B[i * n + col];  
+            // acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
         }
 
         // Accumulate the result into global memory (C[row + col * n])
@@ -852,6 +853,8 @@ int main(int argc, char* argv[]) {
             for (int k = 0; k < slen; k++) {
                 oneseq[k] = hSp_list[k][i * B_num_cols + j];
             }
+            std::cout << "oneseq: ";
+            display_vector(oneseq, 10);
             // compute the minimal polynomial
             std::vector<myfloat> coeffs = berlekamp_massey(oneseq, THESMALLPRIME);
             std::cout << "Poly length: " << coeffs.size() << std::endl;
