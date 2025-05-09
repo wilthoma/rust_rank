@@ -181,12 +181,12 @@ void tic() {
     // Start the timer
     tic_start_time = std::chrono::high_resolution_clock::now();
 }
-void toc(char* msg = "") {
+void toc(const std::string& msg = "") {
     // Stop the timer
     auto end_time = std::chrono::high_resolution_clock::now();
     // Calculate the elapsed time in milliseconds
     auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - tic_start_time).count();
-    std::cout << "Elapsed time: " << elapsed_time << " ms. "<< msg << std::endl;
+    std::cout << "Elapsed time: " << elapsed_time << " ms. " << msg << std::endl;
 }
 
 static std::vector<std::vector<myfloat>> hSp_list;
