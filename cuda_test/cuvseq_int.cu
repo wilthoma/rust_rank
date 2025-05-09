@@ -669,7 +669,7 @@ int main(int argc, char* argv[]) {
     dim3 blockDimT(16, 32);
     dim3 gridDimT((A_num_cols + blockDimT.x - 1) / blockDimT.x,
                 (B_num_cols + blockDimT.y - 1) / blockDimT.y);
-    for (int round=0;round<seed_seq/4;round++){
+    for (int round=0;round<seq_len/4;round++){
         std::cout << "Round " << round << std::endl;
         // execute SpMM, multiply by A to get C
 
