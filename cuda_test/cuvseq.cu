@@ -196,6 +196,53 @@ void toc(const std::string& msg = "") {
     std::cout << "Elapsed time: " << elapsed_time << " ms. " << msg << std::endl;
 }
 
+void transpose_csr_matrix(
+    const std::vector<int>& row_ptr,
+    const std::vector<int>& col_indices,
+    const std::vector<myfloat>& values,
+    int n_rows,
+    int n_cols,
+    std::vector<int>& row_ptr_t,
+    std::vector<int>& col_indices_t,
+    std::vector<myfloat>& values_t) {
+
+    // Step 1: Count non-zero elements per column
+    std::vector<int> nnz_per_col(n_cols, 0);
+    for (const auto& col : col_indices) {
+        nnz_per_col[col]++;
+    }
+
+    // Step 2: Compute row_ptr for transposed matrix
+    row_ptr_t.resize(n_cols + 1, 0);
+    for (int i = 0; i < n_cols; ++i) {
+        row_ptr_t[i + 1] = row_ptr_t[i] + nnz_per_col[i];
+    }
+
+    // Step 3: Prepare space for transposed values and indices
+    int nnz = values.size();
+    values_t.resize(nnz);
+    col_indices_t.resize(nnz);
+
+    std::vector<int> next_insert_pos = row_ptr_t;
+
+    // Step 4: Populate the transposed matrix
+    for (int row = 0; row < n_rows; ++row) {
+        int start = row_ptr[row];
+        int end = row_ptr[row + 1];
+
+        for (int idx = start; idx < end; ++idx) {
+            int col = col_indices[idx];
+            myfloat val = values[idx];
+
+            int insert_pos = next_insert_pos[col];
+            values_t[insert_pos] = val;
+            col_indices_t[insert_pos] = row;
+            next_insert_pos[col]++;
+        }
+    }
+}
+
+
 static std::vector<std::vector<myfloat>> hSp_list;
 
 int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
@@ -235,8 +282,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns>" << std::endl;
         return -1;
     }
-    std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns;
-    std::vector<myfloat> values, csrValues;
+    std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns, csrColumnsT, csrOffsetsT, ;
+    std::vector<myfloat> values, csrValues, csrValuesT;
     int numRows, numCols, nnz;
     auto loadStart = std::chrono::high_resolution_clock::now();
     load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
@@ -251,6 +298,11 @@ int main(int argc, char* argv[]) {
     std::cout << "COO to CSR conversion runtime: " << convertMilliseconds << " ms" << std::endl;
 
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
+
+    transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
+    std::cout << "CSR matrix transposed." << std::endl;
+    std::cout << "Transposed matrix size: " << numCols << "x" << numRows << std::endl;
+    std::cout << "Transposed matrix nnz: " << csrValuesT.size() << std::endl;
 
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
@@ -291,12 +343,14 @@ int main(int argc, char* argv[]) {
 
     //--------------------------------------------------------------------------
     // Device memory management
-    int   *dA_csrOffsets, *dA_columns;
-    myfloat *dA_values, *dB, *dC;
-    CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,
-                           (A_num_rows + 1) * sizeof(int)) )
+    int   *dA_csrOffsets, *dA_columns, *dA_csrOffsetsT, *dA_columnsT;
+    myfloat *dA_values, *dA_valuesT, *dB, *dC;
+    CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,(A_num_rows + 1) * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
     CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(myfloat))  )
+    CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsetsT,(A_num_cols + 1) * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_columnsT, A_nnz * sizeof(int))    )
+    CHECK_CUDA( cudaMalloc((void**) &dA_valuesT,  A_nnz * sizeof(myfloat))  )
     CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(myfloat)) )
     CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(myfloat)) )
 
@@ -307,6 +361,13 @@ int main(int argc, char* argv[]) {
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(myfloat),
                            cudaMemcpyHostToDevice) )
+    CHECK_CUDA( cudaMemcpy(dA_csrOffsetsT, &csrOffsetsT[0],
+                            (A_num_cols + 1) * sizeof(int),
+                            cudaMemcpyHostToDevice) )
+     CHECK_CUDA( cudaMemcpy(dA_columnsT, &csrColumnsT[0], A_nnz * sizeof(int),
+                            cudaMemcpyHostToDevice) )
+     CHECK_CUDA( cudaMemcpy(dA_valuesT, &csrValuesT[0], A_nnz * sizeof(myfloat),
+                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(myfloat),
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(myfloat),
@@ -315,6 +376,7 @@ int main(int argc, char* argv[]) {
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
     cusparseSpMatDescr_t matA;
+    cusparseSpMatDescr_t matAT;
     cusparseDnMatDescr_t matB, matC;
     void*                dBuffer    = NULL;
     void*                dBuffer2    = NULL;
@@ -334,6 +396,10 @@ int main(int argc, char* argv[]) {
                                       dA_csrOffsets, dA_columns, dA_values,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_FMT) )
+    CHECK_CUSPARSE( cusparseCreateCsr(&matAT, A_num_cols, A_num_rows, A_nnz,
+        dA_csrOffsetsT, dA_columnsT, dA_valuesT,
+        CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+        CUSPARSE_INDEX_BASE_ZERO, CUDA_FMT) )
     // Create dense matrix B
     CHECK_CUSPARSE( cusparseCreateDnMat(&matB, A_num_cols, B_num_cols, ldb, dB,
                                         CUDA_FMT, CUSPARSE_ORDER_COL) )
@@ -373,11 +439,17 @@ int main(int argc, char* argv[]) {
         &alpha, matA, matB, &beta, matC, CUDA_FMT,
         CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
+    // CHECK_CUSPARSE( cusparseSpMM_bufferSize(
+    //     handle,
+    //     CUSPARSE_OPERATION_TRANSPOSE,
+    //     CUSPARSE_OPERATION_NON_TRANSPOSE,
+    //     &alpha, matA, matC, &beta, matD, CUDA_FMT,
+    //     CUSPARSE_TRANS_ALGO, &bufferSize2) )
     CHECK_CUSPARSE( cusparseSpMM_bufferSize(
         handle,
-        CUSPARSE_OPERATION_TRANSPOSE,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &alpha, matA, matC, &beta, matD, CUDA_FMT,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha, matAT, matC, &beta, matD, CUDA_FMT,
         CUSPARSE_TRANS_ALGO, &bufferSize2) )
     CHECK_CUDA( cudaMalloc(&dBuffer2, bufferSize2) )
 
@@ -395,13 +467,18 @@ int main(int argc, char* argv[]) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+    // CHECK_CUSPARSE( cusparseSpMM_preprocess(
+    //                                 handle,
+    //                                 CUSPARSE_OPERATION_TRANSPOSE,
+    //                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+    //                                 &alpha, matA, matC, &beta, matD, CUDA_FMT,
+    //                                 CUSPARSE_TRANS_ALGO, dBuffer2) )                    
     CHECK_CUSPARSE( cusparseSpMM_preprocess(
-                                    handle,
-                                    CUSPARSE_OPERATION_TRANSPOSE,
-                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                    &alpha, matA, matC, &beta, matD, CUDA_FMT,
-                                    CUSPARSE_TRANS_ALGO, dBuffer2) )                    
-
+        handle,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha, matAT, matC, &beta, matD, CUDA_FMT,
+        CUSPARSE_TRANS_ALGO, dBuffer2) )    
     compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);
 
     for (int round=0;round<100;round++){
@@ -420,12 +497,16 @@ int main(int argc, char* argv[]) {
         
         // Execute SpMM for the second multiplication (matA^T * matC -> matD)
         tic();
+        // CHECK_CUSPARSE(cusparseSpMM(handle,
+        //                             CUSPARSE_OPERATION_TRANSPOSE,
+        //                             CUSPARSE_OPERATION_NON_TRANSPOSE,
+        //                             &alpha, matA, matC, &beta, matD, CUDA_FMT,
+        //                             CUSPARSE_TRANS_ALGO, dBuffer2));
         CHECK_CUSPARSE(cusparseSpMM(handle,
-                                    CUSPARSE_OPERATION_TRANSPOSE,
-                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                    &alpha, matA, matC, &beta, matD, CUDA_FMT,
-                                    CUSPARSE_TRANS_ALGO, dBuffer2));
-
+                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                        &alpha, matAT, matC, &beta, matD, CUDA_FMT,
+                                        CUSPARSE_TRANS_ALGO, dBuffer2));
         toc("SpMM A^T*C->D");
         tic();
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
@@ -444,12 +525,16 @@ int main(int argc, char* argv[]) {
                                         CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
         apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
         // and by A^T to get B
+        // CHECK_CUSPARSE(cusparseSpMM(handle,
+        //     CUSPARSE_OPERATION_TRANSPOSE,
+        //     CUSPARSE_OPERATION_NON_TRANSPOSE,
+        //     &alpha, matA, matC, &beta, matB, CUDA_FMT,
+        //     CUSPARSE_TRANS_ALGO, dBuffer2));
         CHECK_CUSPARSE(cusparseSpMM(handle,
-            CUSPARSE_OPERATION_TRANSPOSE,
-            CUSPARSE_OPERATION_NON_TRANSPOSE,
-            &alpha, matA, matC, &beta, matB, CUDA_FMT,
-            CUSPARSE_TRANS_ALGO, dBuffer2));
-
+                CUSPARSE_OPERATION_NON_TRANSPOSE,
+                CUSPARSE_OPERATION_NON_TRANSPOSE,
+                &alpha, matAT, matC, &beta, matB, CUDA_FMT,
+                CUSPARSE_TRANS_ALGO, dBuffer2));
         apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         
         compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols);
