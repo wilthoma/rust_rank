@@ -346,7 +346,7 @@ int main(int argc, char* argv[]) {
     // void*                dBuffer3    = NULL;
     size_t               bufferSize = 0;
     size_t               bufferSize2 = 0;
-    size_t               bufferSize3 = 0;
+    // size_t               bufferSize3 = 0;
     cudaEvent_t start, stop;
 
 
