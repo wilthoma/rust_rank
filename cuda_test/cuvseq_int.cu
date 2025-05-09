@@ -528,7 +528,7 @@ struct CsrMatrix {
 void display_vector(const std::vector<myfloat>& vec, int max_elements = 10) {
     std::cout << "Vector: ";
     for (int i = 0; i < std::min(max_elements, (int)vec.size()); ++i) {
-        std::cout << vec[i] << " ";
+        std::cout << (vec[i]>0?vec[i]:vec[i]+THESMALLPRIME) << " ";
     }
     std::cout << std::endl;
 }
