@@ -177,12 +177,15 @@ __global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
 
 auto tic_start_time= std::chrono::high_resolution_clock::now();
 
+
 void tic() {
     // Start the timer
+    cudaDeviceSynchronize();
     tic_start_time = std::chrono::high_resolution_clock::now();
 }
 void toc(const std::string& msg = "") {
     // Stop the timer
+    cudaDeviceSynchronize();
     auto end_time = std::chrono::high_resolution_clock::now();
     // Calculate the elapsed time in milliseconds
     auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - tic_start_time).count();
