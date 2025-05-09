@@ -221,7 +221,7 @@ void transpose_csr_matrix(
     for (int i = 0; i < nnzc; ++i) {
         int col = col_indices[i];
         if (col <0 || col >= n_cols) {
-            std::cerr << "Error: Column index out of bounds." << std::endl;
+            std::cerr << "Error: Column index out of bounds." <<col<< " vs " <<i << " vs "<< n_cols  << std::endl;
             exit(-1);
         }
         nnz_per_col[col]++;
