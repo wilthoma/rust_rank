@@ -341,7 +341,11 @@ int main(int argc, char* argv[]) {
     cusparseSpMatDescr_t matA;
     cusparseDnMatDescr_t matB, matC;
     void*                dBuffer    = NULL;
+    void*                dBuffer2    = NULL;
+    void*                dBuffer3    = NULL;
     size_t               bufferSize = 0;
+    size_t               bufferSize2 = 0;
+    size_t               bufferSize3 = 0;
     cudaEvent_t start, stop;
 
 
@@ -368,7 +372,13 @@ int main(int argc, char* argv[]) {
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
-
+    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
+        handle,
+        CUSPARSE_OPERATION_TRANSPOSE,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &alpha, matA, matC, &beta, matD, CUDA_FMT,
+        CUSPARSE_SPMM_CSR_ALG2, &bufferSize2) )
+    CHECK_CUDA( cudaMalloc(&dBuffer2, bufferSize2) )
 
     // Create dense matrix D for the result of the second multiplication
     myfloat *dD;
@@ -408,6 +418,12 @@ int main(int argc, char* argv[]) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+    CHECK_CUSPARSE( cusparseSpMM_preprocess(
+                                    handle,
+                                    CUSPARSE_OPERATION_TRANSPOSE,
+                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                    &alpha, matA, matC, &beta, matD, CUDA_FMT,
+                                    CUSPARSE_SPMM_CSR_ALG2, dBuffer2) )                    
 
     compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);
 
@@ -431,7 +447,7 @@ int main(int argc, char* argv[]) {
                                     CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
-                                    CUSPARSE_SPMM_CSR_ALG3, dBuffer));
+                                    CUSPARSE_SPMM_CSR_ALG2, dBuffer2));
 
         toc("SpMM A^T*C->D");
         tic();
