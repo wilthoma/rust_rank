@@ -515,15 +515,15 @@ struct CsrMatrix {
 
     CsrMatrix(int rows, int cols, const std::vector<int>& offsets, const std::vector<int>& indices, const std::vector<myfloat>& vals)
         : numRows(rows), numCols(cols), rowOffsets(offsets), colIndices(indices), values(vals) {}
-}
+};
 
-void test_singlemat_product(CsrMatrix &matA, myfloat *dB)
-{
-    // take a product with a vector of ones and see the result
-    std::vector<myfloat> vecA(matA.numCols, 1);
-    // 
+// void test_singlemat_product(CsrMatrix &matA, myfloat *dB)
+// {
+//     // take a product with a vector of ones and see the result
+//     std::vector<myfloat> vecA(matA.numCols, 1);
+//     // 
 
-}
+// }
 
 void display_vector(const std::vector<myfloat>& vec, int max_elements = 10) {
     std::cout << "Vector: ";
@@ -596,7 +596,7 @@ int main(int argc, char* argv[]) {
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
-    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
+    // std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
     std::vector<myfloat> h_dense(numCols * denseCols, 1);
     // for (int i = 0; i < numCols * denseCols; ++i) {
     //     h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
