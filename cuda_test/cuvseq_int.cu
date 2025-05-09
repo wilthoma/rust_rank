@@ -943,7 +943,10 @@ int main(int argc, char* argv[]) {
     dim3 gridDimT((A_num_cols + blockDimT.x - 1) / blockDimT.x,
                 (B_num_cols + blockDimT.y - 1) / blockDimT.y);
     for (int round=0;round<seq_len/4;round++){
-        std::cout << "Round " << round << std::endl;
+        if (round%10==0){
+            std::cout << "Round " << round << std::endl;
+        } 
+        // std::cout << "Round " << round << std::endl;
         // execute SpMM, multiply by A to get C
 
         // tic();
@@ -961,8 +964,8 @@ int main(int argc, char* argv[]) {
         // toc("Handcrafted...:");
         tic();
 
-        std::cout << "gridDim = ("<< gridDim.x<<"x"<< gridDim.y;
-        std::cout << ") blockDim = ("<< blockDim.x<<"x"<< blockDim.y<<")" << std::endl;
+        // std::cout << "gridDim = ("<< gridDim.x<<"x"<< gridDim.y;
+        // std::cout << ") blockDim = ("<< blockDim.x<<"x"<< blockDim.y<<")" << std::endl;
         csr_spmm_2d<<<gridDim, blockDim>>>(
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
@@ -993,7 +996,7 @@ int main(int argc, char* argv[]) {
             dC, dD
         );
         toc("SpMM A^T*C->D");
-        display_cuda_buffer(dD, D_size, 10);
+        // display_cuda_buffer(dD, D_size, 10);
         tic();
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
         toc("apply_function_kernel D");
