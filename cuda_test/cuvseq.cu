@@ -132,9 +132,11 @@ void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, 
     int row, col;
     myfloat value;
     while (file >> row >> col >> value) {
-        tempRowIndices.push_back(row);
-        tempColIndices.push_back(col);
-        tempValues.push_back(value);
+        if (row>0 && col>0) {
+            tempRowIndices.push_back(row-1);
+            tempColIndices.push_back(col-1);
+            tempValues.push_back(value);
+        }
     }
 
     nnz = tempRowIndices.size();
@@ -161,13 +163,16 @@ void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const st
         csrOffsets[i] = csrOffsets[i - 1] + rowCount[i - 1];
     }
 
-    std::vector<int> tempOffsets = csrOffsets;
-    for (int i = 0; i < rowIndices.size(); ++i) {
-        int row = rowIndices[i];
-        int destIndex = tempOffsets[row]++;
-        csrColumns[destIndex] = colIndices[i];
-        csrValues[destIndex] = values[i];
-    }
+    csrColumns = colIndices;
+    csrValues = values;
+    
+    // std::vector<int> tempOffsets = csrOffsets;
+    // for (int i = 0; i < rowIndices.size(); ++i) {
+    //     int row = rowIndices[i];
+    //     int destIndex = tempOffsets[row]++;
+    //     csrColumns[destIndex] = colIndices[i];
+    //     csrValues[destIndex] = values[i];
+    // }
 }
 
 bool is_csr_valid(int numRows, int numCols, const std::vector<int>& csrOffsets, const std::vector<int>& csrColumns, const std::vector<myfloat>& csrValues) {
@@ -260,15 +265,15 @@ void transpose_csr_matrix(
     std::vector<int> tmprow_ptr_t(n_cols+1, 0);
     // row_ptr_t.resize(n_cols + 1, 0);
     for (int i = 0; i < n_cols; ++i) {
-        row_ptr_t[i + 1] = row_ptr_t[i] + nnz_per_col[i];
+        tmprow_ptr_t[i + 1] = tmprow_ptr_t[i] + nnz_per_col[i];
     }
 
     // Step 3: Prepare space for transposed values and indices
     int nnz = values.size();
-    values_t.resize(nnz);
-    col_indices_t.resize(nnz);
+    values_t.resize(nnz,0);
+    col_indices_t.resize(nnz,0);
 
-    std::vector<int> next_insert_pos(tmprow_ptr_t.begin(), tmprow_ptr_t.end());
+    std::vector<int> next_insert_pos = tmprow_ptr_t;
 
     // Step 4: Populate the transposed matrix
     for (int row = 0; row < n_rows; ++row) {
@@ -415,6 +420,14 @@ int main(int argc, char* argv[]) {
     std::cout << "CSR matrix transposed." << std::endl;
     std::cout << "Transposed matrix size: " << numCols << "x" << numRows << std::endl;
     std::cout << "Transposed matrix nnz: " << csrValuesT.size() << std::endl;
+
+
+    if (is_csr_valid(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT)) {
+        std::cout << "Transposed CSR matrix is valid." << std::endl;
+    } else {
+        std::cerr << "Transposed CSR matrix is invalid." << std::endl;
+        return -1;
+    }
 
     std::cout<< "A";
 
