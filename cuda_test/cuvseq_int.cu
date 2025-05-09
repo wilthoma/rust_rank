@@ -59,6 +59,10 @@
 // #include "cublas_utils.h"
 #include <random>
 #include <algorithm>
+#include <string>
+#include <stdexcept>
+#include <sstream>
+#include <iomanip>
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -543,10 +547,11 @@ void display_cuda_buffer(myfloat* d_buffer, int size, int max_elements = 10) {
 int main(int argc, char* argv[]) {
 
     // load matrix from file
-    if (argc < 4) {
-        std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns> <sequence length>" << std::endl;
+    if (argc < 5) {
+        std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns> <sequence length> <outfile>" << std::endl;
         return -1;
     }
+    char* outfile = argv[4];
     int seq_len = atoi(argv[3]);
     std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns, csrColumnsT, csrOffsetsT;
     std::vector<myfloat> values, csrValues, csrValuesT;
@@ -840,6 +845,20 @@ int main(int argc, char* argv[]) {
     //         }
     //     }
     // }
+
+    save_all_data(
+        outfile,
+        A_num_rows,
+        A_num_cols,
+        B_num_cols,
+        THESMALLPRIME,
+        scale_factors_rows,
+        scale_factors_cols,
+        h_dense,
+        dB,
+        hSp_list
+    );
+
     int slen = hSp_list.size();
     std::vector<myfloat> oneseq(slen,0);
     for (int i = 0; i < 1; i++) {
@@ -879,4 +898,230 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaFree(dD));
     CHECK_CUDA(cudaFree(dSp));
     return EXIT_SUCCESS;
+}
+
+
+std::vector<std::vector<myfloat>> reshape_to_vector_of_vectors(const std::vector<myfloat>& input, int N) {
+    if (input.size() % N != 0) {
+        throw std::invalid_argument("Input size is not divisible by N");
+    }
+
+    int num_vectors = input.size() / N;
+    std::vector<std::vector<myfloat>> result(num_vectors, std::vector<myfloat>(N));
+
+    for (int i = 0; i < num_vectors; ++i) {
+        for (int j = 0; j < N; ++j) {
+            result[i][j] = input[j * N + i];
+        }
+    }
+
+    return result;
+}
+
+int save_all_data(
+    const std::string& filename,
+    int n_rows,
+    int n_cols,
+    int n_dense_cols,
+    myfloat theprime,
+    const std::vector<myfloat>& row_precond,
+    const std::vector<myfloat>& col_precond,
+    const std::vector<myfloat>& initial_B,
+    const myfloat* dB,
+    const std::vector<std::vector<myfloat>>& sp_list
+) 
+{
+    // read data from cuda buffer
+    std::vector<myfloat> hB(n_cols * n_dense_cols);
+    CHECK_CUDA(cudaMemcpy(hB.data(), dB, n_cols * n_dense_cols * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    
+    // translate into vector of vectors
+    std::vector<std::vector<myfloat>> cur_B = reshape_to_vector_of_vectors(hB, n_cols);
+    std::vector<std::vector<myfloat>> ini_B = reshape_to_vector_of_vectors(initial_B, n_cols);
+
+    // select upper triangular part of sp_list
+    int nlen = sp_list.size(); 
+    std::vector<std::vector<myfloat>> sp_list_upper;
+    for (int i = 0; i < n_dense_cols; ++i) {
+        for (int j = i; j < n_dense_cols; ++j) {
+            std::vector<myfloat> sp_row(nlen);
+            for (int k = 0; k < nlen; ++k) {
+                sp_row[k] = sp_list[k][i * n_dense_cols + j];
+            }
+            sp_list_upper.push_back(sp_row);
+        }
+    }
+
+    save_wdm_file_sym(
+        filename,
+        n_rows,
+        n_cols,
+        theprime,
+        row_precond,
+        col_precond,
+        ini_B,
+        cur_B,
+        sp_list_upper
+    );
+    std::cout << "Data saved to " << filename << std::endl;
+
+    return 0;
+}
+
+
+
+
+template <typename T>
+std::vector<T> prettify_vect(const std::vector<T>& vec, T theprime) {
+    std::vector<T> result(vec.size());
+    for (size_t i = 0; i < vec.size(); ++i) {
+        result[i] = (vec[i] % theprime + theprime) % theprime;
+    }
+    return result;
+}
+
+template <typename T>
+void save_wdm_file_sym(
+    const std::string& wdm_filename,
+    size_t n_rows,
+    size_t n_cols,
+    T theprime,
+    const std::vector<T>& row_precond,
+    const std::vector<T>& col_precond,
+    const std::vector<std::vector<T>>& v_list,
+    const std::vector<std::vector<T>>& curv_list,
+    const std::vector<std::vector<T>>& seq_list
+) {
+    std::ofstream file(wdm_filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + wdm_filename);
+    }
+
+    // Write the first line: m n p Nlen num_u num_v
+    file << n_rows << " " << n_cols << " " << theprime << " " 
+         << seq_list[0].size() << " " << v_list.size() << "\n";
+
+    // Write the second line: row_precond
+    for (size_t i = 0; i < row_precond.size(); ++i) {
+        if (i > 0) file << " ";
+        file << row_precond[i];
+    }
+    file << "\n";
+
+    // Write the third line: col_precond
+    for (size_t i = 0; i < col_precond.size(); ++i) {
+        if (i > 0) file << " ";
+        file << col_precond[i];
+    }
+    file << "\n";
+
+    // Write the v_list
+    for (const auto& vv : v_list) {
+        auto v = prettify_vect(vv, theprime);
+        for (size_t i = 0; i < v.size(); ++i) {
+            if (i > 0) file << " ";
+            file << v[i];
+        }
+        file << "\n";
+    }
+
+    // Write the curv_list
+    for (const auto& curvv : curv_list) {
+        auto curv = prettify_vect(curvv, theprime);
+        for (size_t i = 0; i < curv.size(); ++i) {
+            if (i > 0) file << " ";
+            file << curv[i];
+        }
+        file << "\n";
+    }
+
+    // Write the seq_list
+    for (const auto& seq : seq_list) {
+        for (size_t i = 0; i < seq.size(); ++i) {
+            if (i > 0) file << " ";
+            file << seq[i];
+        }
+        file << "\n";
+    }
+
+    file.close();
+    if (!file) {
+        throw std::runtime_error("Failed to write to file: " + wdm_filename);
+    }
+}
+
+template <typename T>
+std::tuple<uint32_t, size_t, size_t, size_t> load_wdm_file_sym(
+    const std::string& wdm_filename,
+    std::vector<T>& row_precond,
+    std::vector<T>& col_precond,
+    std::vector<std::vector<T>>& v_list,
+    std::vector<std::vector<T>>& curv_list,
+    std::vector<std::vector<T>>& seq_list
+) {
+    std::ifstream file(wdm_filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + wdm_filename);
+    }
+
+    // Read the first line: m n p Nlen num_v
+    size_t m, n, nlen, num_v;
+    uint32_t p;
+    file >> m >> n >> p >> nlen >> num_v;
+    file.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to the next line
+
+    // Read row_precond
+    row_precond.resize(m);
+    for (size_t i = 0; i < m; ++i) {
+        file >> row_precond[i];
+    }
+    file.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to the next line
+
+    // Read col_precond
+    col_precond.resize(n);
+    for (size_t i = 0; i < n; ++i) {
+        file >> col_precond[i];
+    }
+    file.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to the next line
+
+    // Read v_list
+    v_list.clear();
+    for (size_t i = 0; i < num_v; ++i) {
+        std::vector<T> v(n);
+        for (size_t j = 0; j < n; ++j) {
+            file >> v[j];
+        }
+        v_list.push_back(std::move(v));
+    }
+
+    // Read curv_list
+    curv_list.clear();
+    for (size_t i = 0; i < num_v; ++i) {
+        std::vector<T> curv(n);
+        for (size_t j = 0; j < n; ++j) {
+            file >> curv[j];
+        }
+        curv_list.push_back(std::move(curv));
+    }
+
+    // Read seq_list
+    seq_list.clear();
+    size_t seq_count = num_v * (num_v + 1) / 2;
+    for (size_t i = 0; i < seq_count; ++i) {
+        std::vector<T> seq(nlen);
+        for (size_t j = 0; j < nlen; ++j) {
+            file >> seq[j];
+        }
+        seq_list.push_back(std::move(seq));
+    }
+
+    // Ensure all vectors are of the correct size
+    if (row_precond.size() != m) {
+        throw std::runtime_error("Row preconditioner length does not match matrix rows");
+    }
+    if (col_precond.size() != n) {
+        throw std::runtime_error("Column preconditioner length does not match matrix columns");
+    }
+
+    return std::make_tuple(p, m, n, num_v);
 }
