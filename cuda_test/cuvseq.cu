@@ -102,10 +102,14 @@
 
 // const int THESMALLPRIME = 3323;
 
-// typedef float myfloat;
-typedef float myfloat;
-// typedef double myfloat;
-#define CUDA_FMT CUDA_R_32F
+#define USE_DOUBLE 1
+#if USE_DOUBLE
+    typedef double myfloat;
+    #define CUDA_FMT CUDA_R_64F
+#else
+    typedef float myfloat;
+    #define CUDA_FMT CUDA_R_32F
+#endif
 // #define CUDA_FMT CUDA_R_64F
 // #define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_CSR_ALG3
 #define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_ALG_DEFAULT
@@ -253,10 +257,11 @@ int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, m
     int Sp_size = n_dense_vectors * n_dense_vectors;
     std::vector<myfloat> hSp(Sp_size);
 
-    CUBLAS_CHECK(
-        // cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
-    
-        cublasSgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
+    #if USE_DOUBLE
+        CUBLAS_CHECK(cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
+    #else
+        CUBLAS_CHECK(cublasSgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
+    #endif
     
         apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
 
