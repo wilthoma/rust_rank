@@ -451,11 +451,11 @@ int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_ve
         CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
     
         // print the first 10 entries of the result
-        std::cout << "dSp (first 10 entries): ";
-        for (int i = 0; i < 10 && i < Sp_size; ++i) {
-            std::cout << hSp[i] << " ";
-        }
-        std::cout << std::endl;
+        // std::cout << "dSp (first 10 entries): ";
+        // for (int i = 0; i < 10 && i < Sp_size; ++i) {
+        //     std::cout << hSp[i] << " ";
+        // }
+        // std::cout << std::endl;
         
         hSp_list.push_back(hSp);
 
