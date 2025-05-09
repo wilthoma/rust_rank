@@ -626,7 +626,7 @@ int main(int argc, char* argv[]) {
         );
         toc("Handcrafted...:");
         tic();
-        dim3 blockDim(16, 128);
+        dim3 blockDim(16, 32);
         dim3 gridDim((B_num_cols + blockDim.x - 1) / blockDim.x,
                     (A_num_rows + blockDim.y - 1) / blockDim.y);
         std::cout << "gridDim = ("<< gridDim.x<<"x"<< gridDim.y;
