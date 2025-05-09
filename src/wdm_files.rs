@@ -43,6 +43,8 @@ where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + st
     let nlen: usize = parts.next().ok_or("Missing Nlen")?.parse()?;
     let num_v: usize = parts.next().ok_or("Missing num_v")?.parse()?;
 
+println!("First line ok m,n,p,Nlen,num_v: {} {} {} {} {}", m, n, p, nlen, num_v);
+
     // Read row_precond
     line.clear();
     reader.read_line(&mut line)?;
@@ -51,6 +53,8 @@ where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + st
         .map(|x| x.parse::<T>())
         .collect::<Result<Vec<_>, _>>()?;
 
+        println!("Row precond ok");
+
     // Read col_precond
     line.clear();
     reader.read_line(&mut line)?;
@@ -58,7 +62,7 @@ where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + st
         .split_whitespace()
         .map(|x| x.parse::<T>())
         .collect::<Result<Vec<_>, _>>()?;
-
+        println!("Col precond ok");
     // Read v_list
     v_list.clear();
     for _ in 0..num_v {
@@ -73,6 +77,7 @@ where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + st
         }
         v_list.push(v);
     }
+    println!("V list ok");
 
     // Read curv_list
     curv_list.clear();
@@ -88,7 +93,7 @@ where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + st
         }
         curv_list.push(curv);
     }
-
+    println!("Curv list ok");
     // Read seq_list
     seq_list.clear();
     for _ in 0..(num_v * (num_v+1)/2) {
@@ -104,6 +109,7 @@ where T: Display + std::ops::Add<Output=T> + Copy + std::ops::Mul<Output=T> + st
         }
         seq_list.push(seq);
     }
+    println!("Seq list ok");
 
     // Ensure all vectors are of the correct size   
     if row_precond.len() != m {
