@@ -251,6 +251,36 @@ void transpose_csr_matrix(
 }
 
 
+__global__ void csr_spmm_naive(
+    int M, int N,
+    const int *__restrict__ csr_row_ptr,
+    const int *__restrict__ csr_col_idx,
+    const myfloat *__restrict__ csr_val,
+    const myfloat *__restrict__ B, // dense matrix B [K x N]
+    myfloat *__restrict__ C        // output matrix C [M x N]
+) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= M) return;
+
+    // Initialize output row
+    for (int j = 0; j < N; j++) {
+        C[row * N + j] = 0.0;
+    }
+
+    // Iterate over non-zeros in row
+    int row_start = csr_row_ptr[row];
+    int row_end = csr_row_ptr[row + 1];
+    for (int idx = row_start; idx < row_end; idx++) {
+        int col = csr_col_idx[idx];
+        myfloat val = csr_val[idx];
+
+        for (int j = 0; j < N; j++) {
+            C[row * N + j] += val * B[col * N + j];
+        }
+    }
+}
+
+
 static std::vector<std::vector<myfloat>> hSp_list;
 
 int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
@@ -493,6 +523,17 @@ int main(int argc, char* argv[]) {
     for (int round=0;round<100;round++){
         std::cout << "Round " << round << std::endl;
         // execute SpMM, multiply by A to get C
+
+        tic();
+        int threads_per_block = 128;
+        int blocks_per_grid = (A_num_rows + threads_per_block - 1) / threads_per_block;
+        
+        csr_spmm_naive<<<blocks_per_grid, threads_per_block>>>(
+            A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
+            dB, dC
+        );
+        toc("Handcrafted...:");
+
         tic();
         CHECK_CUSPARSE( cusparseSpMM(handle,
             CUSPARSE_OPERATION_NON_TRANSPOSE,
