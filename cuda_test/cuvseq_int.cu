@@ -100,7 +100,8 @@
         }                                                                                          \
     } while (0)
 
-// const int THESMALLPRIME = 3323;
+const int THESMALLPRIME = 3323;
+const int DOT_CHUNK_SIZE = 64;
 
 #define USE_DOUBLE 0
 #if USE_DOUBLE
@@ -206,7 +207,7 @@ __device__ myfloat my_function(myfloat input) {
         return fmod(input, 3323.0);
     #else
         //return fmod(input, 3323.0f);
-        return input % 3323;
+        return input % THESMALLPRIME
     #endif
 }
   
@@ -347,19 +348,47 @@ __global__ void csr_spmm_2d(
     C[row * N + col] = sum;
 }
 
+__global__ void dense_gemm_TN_chunked3D(int n, int k,  // n = n_dense_vectors, k = n_veclen
+    const myfloat* __restrict__ A,  // Transposed: A^T [n x k]
+    const myfloat* __restrict__ B,  // B [k x n]
+    myfloat* C,                    // Output: C [n x n]
+    int chunk_size)
+{
+    int chunk = blockIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.z * blockDim.x + threadIdx.x;
+
+    int chunk_start = chunk * chunk_size;
+    int chunk_end = min(chunk_start + chunk_size, k);
+
+    if (row < n && col < n) {
+        myfloat acc = 0;
+        for (int i = chunk_start; i < chunk_end; ++i) {
+            acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
+        }
+
+        // Accumulate the result into global memory (C[row + col * n])
+        atomicAdd(&C[row + col * n], acc % THESMALLPRIME);
+    }
+}
 
 static std::vector<std::vector<myfloat>> hSp_list;
 
 int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
-    return 0;
     int Sp_size = n_dense_vectors * n_dense_vectors;
     std::vector<myfloat> hSp(Sp_size);
 
-    #if USE_DOUBLE
-       // CUBLAS_CHECK(cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
-    #else
-       // CUBLAS_CHECK(cublasSgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
-    #endif
+    cudaMemset(dSp, 0, n_dense_vectors * n_dense_vectors * sizeof(myfloat));
+
+    int num_chunks = (n_veclen + chunk_size - 1) / DOT_CHUNK_SIZE;
+    dim3 blockDim(16, 16);  // threads per block
+    dim3 gridDim(num_chunks,
+                 (n_dense_vectors + blockDim.y - 1) / blockDim.y,
+                 (n_dense_vectors + blockDim.x - 1) / blockDim.x);
+    
+    dense_gemm_TN_chunked3D<<<gridDim, blockDim>>>(
+        n_dense_vectors, n_veclen, dM1, dM2, dSp, DOT_CHUNK_SIZE
+    );
 
         apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
 
