@@ -431,7 +431,8 @@ int main(int argc, char* argv[]) {
                                     CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
-                                    CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
+                                    CUSPARSE_SPMM_CSR_ALG2, dBuffer));
+
         toc("SpMM A^T*C->D");
         tic();
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
