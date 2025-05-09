@@ -859,12 +859,7 @@ int main(int argc, char* argv[]) {
             std::vector<myfloat> coeffs = berlekamp_massey(oneseq, THESMALLPRIME);
             std::cout << "Poly length: " << coeffs.size() << std::endl;
             std::cout << "Poly coeffs: ";
-            for (int k = 0; k < coeffs.size(); k++) {
-                std::cout << coeffs[k] << " ";
-                if (k>10) {
-                    break;
-                }
-            }
+            display_vector(coeffs, 10);
         }
     }
     // for (int i = 0; i < A_num_rows; i++) {
