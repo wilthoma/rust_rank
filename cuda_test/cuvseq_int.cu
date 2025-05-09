@@ -350,7 +350,7 @@ __global__ void csr_spmm_2d(
 
 static std::vector<std::vector<myfloat>> hSp_list;
 
-int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
+int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
     return 0;
     myfloat alpha           = 1.0f;
     myfloat beta            = 0.0f;
@@ -360,7 +360,7 @@ int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, m
     std::vector<myfloat> hSp(Sp_size);
 
     #if USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
+       // CUBLAS_CHECK(cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
     #else
        // CUBLAS_CHECK(cublasSgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
     #endif
@@ -532,7 +532,7 @@ int main(int argc, char* argv[]) {
         // execute SpMM
 
     // execute preprocess (optional)
-    compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);
+    compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
     dim3 blockDim(16, 32);
     dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
                 (B_num_cols + blockDim.y - 1) / blockDim.y);
@@ -593,8 +593,8 @@ int main(int argc, char* argv[]) {
         toc("apply_function_kernel D");
         
         tic();
-        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols);
-        compute_and_push_sp(blashandle, dD, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
         toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
@@ -625,8 +625,8 @@ int main(int argc, char* argv[]) {
         );
         apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         
-        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols);
-        compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);                               
+        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);                               
     
     }
 
@@ -680,7 +680,6 @@ int main(int argc, char* argv[]) {
         printf("spmm_csr_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
-    CHECK_CUDA( cudaFree(dBuffer) )
     CHECK_CUDA( cudaFree(dA_csrOffsets) )
     CHECK_CUDA( cudaFree(dA_columns) )
     CHECK_CUDA( cudaFree(dA_values) )

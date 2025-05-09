@@ -771,6 +771,7 @@ int main(int argc, char* argv[]) {
     //--------------------------------------------------------------------------
     // device memory deallocation
     CHECK_CUDA( cudaFree(dBuffer) )
+    CHECK_CUDA( cudaFree(dBuffer2) )
     CHECK_CUDA( cudaFree(dA_csrOffsets) )
     CHECK_CUDA( cudaFree(dA_columns) )
     CHECK_CUDA( cudaFree(dA_values) )
