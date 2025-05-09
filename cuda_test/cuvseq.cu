@@ -343,7 +343,7 @@ int main(int argc, char* argv[]) {
     cusparseDnMatDescr_t matB, matC;
     void*                dBuffer    = NULL;
     void*                dBuffer2    = NULL;
-    void*                dBuffer3    = NULL;
+    // void*                dBuffer3    = NULL;
     size_t               bufferSize = 0;
     size_t               bufferSize2 = 0;
     size_t               bufferSize3 = 0;
