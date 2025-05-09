@@ -181,12 +181,12 @@ void tic() {
     // Start the timer
     tic_start_time = std::chrono::high_resolution_clock::now();
 }
-void toc() {
+void toc(chhar* msg = "") {
     // Stop the timer
     auto end_time = std::chrono::high_resolution_clock::now();
     // Calculate the elapsed time in milliseconds
     auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - tic_start_time).count();
-    std::cout << "Elapsed time: " << elapsed_time << " ms" << std::endl;
+    std::cout << "Elapsed time: " << elapsed_time << " ms. "<< msg << std::endl;
 }
 
 static std::vector<std::vector<myfloat>> hSp_list;
@@ -411,20 +411,28 @@ int main(int argc, char* argv[]) {
     for (int round=0;round<100;round++){
         std::cout << "Round " << round << std::endl;
         // execute SpMM, multiply by A to get C
+        tic();
         CHECK_CUSPARSE( cusparseSpMM(handle,
             CUSPARSE_OPERATION_NON_TRANSPOSE,
             CUSPARSE_OPERATION_NON_TRANSPOSE,
             &alpha, matA, matB, &beta, matC, CUDA_FMT,
             CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) );
+        toc("SpMM A*B->C");
+        tic();
         apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
+        toc("apply_function_kernel C");
+        
         // Execute SpMM for the second multiplication (matA^T * matC -> matD)
+        tic();
         CHECK_CUSPARSE(cusparseSpMM(handle,
                                     CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
                                     CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
-
+        toc("SpMM A^T*C->D");
+        tic();
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
+        toc("apply_function_kernel D");
         
         compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols);
         compute_and_push_sp(blashandle, dD, dD, dSp, B_num_cols, A_num_cols);
