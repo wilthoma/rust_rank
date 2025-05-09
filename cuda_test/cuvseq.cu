@@ -282,7 +282,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns>" << std::endl;
         return -1;
     }
-    std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns, csrColumnsT, csrOffsetsT, ;
+    std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns, csrColumnsT, csrOffsetsT;
     std::vector<myfloat> values, csrValues, csrValuesT;
     int numRows, numCols, nnz;
     auto loadStart = std::chrono::high_resolution_clock::now();
