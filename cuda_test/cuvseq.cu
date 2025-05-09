@@ -181,7 +181,7 @@ void tic() {
     // Start the timer
     tic_start_time = std::chrono::high_resolution_clock::now();
 }
-void toc(chhar* msg = "") {
+void toc(char* msg = "") {
     // Stop the timer
     auto end_time = std::chrono::high_resolution_clock::now();
     // Calculate the elapsed time in milliseconds
