@@ -592,24 +592,24 @@ int main(int argc, char* argv[]) {
     // csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
     // csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
 
-    std::cout<< "A";
+    // std::cout<< "A";
 
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
-    std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
+    // std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
     // std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
     std::vector<myfloat> h_dense(numCols * denseCols, 1);
     // for (int i = 0; i < numCols * denseCols; ++i) {
     //     h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     // }
-    std::cout<< "A";
+    // std::cout<< "A";
 
     std::vector<myfloat> c_dense(numRows * denseCols, 0);
     // for (int i = 0; i < numRows * denseCols; ++i) {
     //     c_dense[i] = 0; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     // }
 
-    std::cout<< "A";
+    // std::cout<< "A";
 
     std::vector<myfloat> c_result(numRows * denseCols);
 
@@ -632,7 +632,7 @@ int main(int argc, char* argv[]) {
     myfloat* hC_result     = &c_result[0]; 
 
 
-    std::cout<< "A";
+    // std::cout<< "A";
     //--------------------------------------------------------------------------
     // Device memory management
     int   *dA_csrOffsets, *dA_columns, *dA_csrOffsetsT, *dA_columnsT;
@@ -645,7 +645,7 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA( cudaMalloc((void**) &dA_valuesT,  A_nnz * sizeof(myfloat))  )
     CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(myfloat)) )
     CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(myfloat)) )
-    std::cout<< "B";
+    // std::cout<< "B";
     CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
                            (A_num_rows + 1) * sizeof(int),
                            cudaMemcpyHostToDevice) )
@@ -664,7 +664,7 @@ int main(int argc, char* argv[]) {
                            cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(myfloat),
                            cudaMemcpyHostToDevice) )
-                           std::cout<< "B";
+                        //    std::cout<< "B";
     //--------------------------------------------------------------------------
 
     // size_t               bufferSize3 = 0;
@@ -694,9 +694,7 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaEventRecord(start, 0));
 
     
-        // execute SpMM
 
-    // execute preprocess (optional)
     compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
     dim3 blockDim(16, 32);
     dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
@@ -708,19 +706,19 @@ int main(int argc, char* argv[]) {
         std::cout << "Round " << round << std::endl;
         // execute SpMM, multiply by A to get C
 
-        tic();
-        int threads_per_block = 128;
-        int blocks_per_grid = (A_num_rows + threads_per_block - 1) / threads_per_block;
-        display_cuda_buffer(dB, B_size, 10);
-        csr_spmm_naive<<<blocks_per_grid, threads_per_block>>>(
-            A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
-            dB, dC
-        );
-        display_cuda_buffer(dC, C_size, 10);
-        cudaError_t err = cudaGetLastError();
-        if (err != cudaSuccess)
-            printf("CUDA Error: %s\n", cudaGetErrorString(err));
-        toc("Handcrafted...:");
+        // tic();
+        // int threads_per_block = 128;
+        // int blocks_per_grid = (A_num_rows + threads_per_block - 1) / threads_per_block;
+        // display_cuda_buffer(dB, B_size, 10);
+        // csr_spmm_naive<<<blocks_per_grid, threads_per_block>>>(
+        //     A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
+        //     dB, dC
+        // );
+        // display_cuda_buffer(dC, C_size, 10);
+        // cudaError_t err = cudaGetLastError();
+        // if (err != cudaSuccess)
+        //     printf("CUDA Error: %s\n", cudaGetErrorString(err));
+        // toc("Handcrafted...:");
         tic();
 
         std::cout << "gridDim = ("<< gridDim.x<<"x"<< gridDim.y;
@@ -729,7 +727,7 @@ int main(int argc, char* argv[]) {
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
         );
-        display_cuda_buffer(dC, C_size, 10);
+        // display_cuda_buffer(dC, C_size, 10);
         err = cudaGetLastError();
         if (err != cudaSuccess)
             printf("CUDA Error: %s\n", cudaGetErrorString(err));
@@ -847,8 +845,8 @@ int main(int argc, char* argv[]) {
     // }
     int slen = hSp_list.size();
     std::vector<myfloat> oneseq(slen,0);
-    for (int i = 0; i < B_num_cols; i++) {
-        for (int j = i; j < B_num_cols; j++) {
+    for (int i = 0; i < 1; i++) {
+        for (int j = i; j < 1; j++) {
             // collect the ij entries of hSp_list
             for (int k = 0; k < slen; k++) {
                 oneseq[k] = hSp_list[k][i * B_num_cols + j];
