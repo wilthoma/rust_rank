@@ -586,23 +586,20 @@ int main(int argc, char* argv[]) {
     }
 
     // Rescale the csr matrices
-    // std::vector<myfloat> scale_factors_rows(numRows, true);
-    // std::vector<myfloat> scale_factors_cols(numCols, true);
-    // csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
-    // csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
-    // csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
+    std::vector<myfloat> scale_factors_rows(numRows, true);
+    std::vector<myfloat> scale_factors_cols(numCols, true);
+    csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
+    csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
+    csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
 
     // std::cout<< "A";
 
     // Random dense matrix for multiplication
     int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     // std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
-    // std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
-    std::vector<myfloat> h_dense(numCols * denseCols, 1);
-    // for (int i = 0; i < numCols * denseCols; ++i) {
-    //     h_dense[i] = i % 101; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
-    // }
-    // std::cout<< "A";
+    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
+    // std::vector<myfloat> h_dense(numCols * denseCols, 1);
+
 
     std::vector<myfloat> c_dense(numRows * denseCols, 0);
     // for (int i = 0; i < numRows * denseCols; ++i) {
