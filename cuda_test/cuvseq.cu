@@ -175,24 +175,28 @@ __global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
     }
 }
 
-auto start_time= std::chrono::high_resolution_clock::now();
+auto tic_start_time= std::chrono::high_resolution_clock::now();
 
 void tic() {
     // Start the timer
-    start_time = std::chrono::high_resolution_clock::now();
+    tic_start_time = std::chrono::high_resolution_clock::now();
 }
 void toc() {
     // Stop the timer
     auto end_time = std::chrono::high_resolution_clock::now();
     // Calculate the elapsed time in milliseconds
-    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - tic_start_time).count();
     std::cout << "Elapsed time: " << elapsed_time << " ms" << std::endl;
 }
 
-int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen, std::vector<myfloat> &hSp) {
+static std::vector<std::vector<myfloat>> hSp_list;
+
+int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
     myfloat alpha           = 1.0f;
     myfloat beta            = 0.0f;
     int Sp_size = n_dense_vectors * n_dense_vectors;
+    std::vector<myfloat> hSp(Sp_size);
+
     CUBLAS_CHECK(
         cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
     
@@ -207,6 +211,9 @@ int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, m
             std::cout << hSp[i] << " ";
         }
         std::cout << std::endl;
+        
+        hSp_list.push_back(hSp);
+
         return 0;
 }
 
@@ -382,7 +389,7 @@ int main(int argc, char* argv[]) {
     cusparseDnMatDescr_t matSp;
     CHECK_CUSPARSE(cusparseCreateDnMat(&matSp, B_num_cols, B_num_cols, ldsp, dSp,
                                         CUDA_FMT, CUSPARSE_ORDER_COL));
-    std::vector<myfloat> hSp(Sp_size);
+    // std::vector<myfloat> hSp(Sp_size);
 
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
@@ -399,7 +406,7 @@ int main(int argc, char* argv[]) {
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
-    compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols, hSp);
+    compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);
 
     for (int round=0;round<5;round++){
         std::cout << "Round " << round << std::endl;
@@ -419,8 +426,8 @@ int main(int argc, char* argv[]) {
 
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
         
-        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols, hSp);
-        compute_and_push_sp(blashandle, dD, dD, dSp, B_num_cols, A_num_cols, hSp);
+        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_sp(blashandle, dD, dD, dSp, B_num_cols, A_num_cols);
 
         // Next multiply by A to get C
         CHECK_CUSPARSE( cusparseSpMM(handle,
@@ -438,8 +445,8 @@ int main(int argc, char* argv[]) {
 
         apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         
-        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols, hSp);
-        compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols, hSp);
+        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols);
 
         // CHECK_CUBLAS(cublasGemmEx(
         //     handle,
