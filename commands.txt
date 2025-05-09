@@ -7,7 +7,7 @@ git pull && /usr/local/cuda/bin/nvcc cupretest.cu -lcusparse -o cupretest
 git pull && /usr/local/cuda/bin/nvcc cuvseq.cu -lcusparse -o cuvseq  -lcublas
 
 
-module load modules/EasyBuild && module load GCC/13.3.0
+module load modules/EasyBuild && module load GCC/13.3.0 && cd prog/tmp3/rust_rank/cuda_test
 
 ./cupretest /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri19_11.txt 64
 ./cuvseq /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri19_11.txt 64

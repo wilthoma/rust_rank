@@ -175,6 +175,41 @@ __global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
     }
 }
 
+auto start_time= std::chrono::high_resolution_clock::now();
+
+void tic() {
+    // Start the timer
+    start_time = std::chrono::high_resolution_clock::now();
+}
+void toc() {
+    // Stop the timer
+    auto end_time = std::chrono::high_resolution_clock::now();
+    // Calculate the elapsed time in milliseconds
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    std::cout << "Elapsed time: " << elapsed_time << " ms" << std::endl;
+}
+
+void compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen, std::vector<myfloat> &hSp) {
+    myfloat alpha           = 1.0f;
+    myfloat beta            = 0.0f;
+    int Sp_size = n_dense_vectors * n_dense_vectors;
+    CUBLAS_CHECK(
+        cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
+    
+        apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
+
+        // Copy the device buffer dSp to a local host buffer
+        CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    
+        // print the first 10 entries of the result
+        std::cout << "dSp (first 10 entries): ";
+        for (int i = 0; i < 10 && i < Sp_size; ++i) {
+            std::cout << hSp[i] << " ";
+        }
+        std::cout << std::endl;
+
+}
+
 int main(int argc, char* argv[]) {
     // Host problem definition
     // int   A_num_rows      = 4;
@@ -364,20 +399,17 @@ int main(int argc, char* argv[]) {
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
                                  CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
-
-    
-
-    // execute SpMM
-    CHECK_CUSPARSE( cusparseSpMM(handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                 &alpha, matA, matB, &beta, matC, CUDA_FMT,
-                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) );
-    apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
-
+    compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols, hSp);
 
     for (int round=0;round<5;round++){
         std::cout << "Round " << round << std::endl;
+        // execute SpMM, multiply by A to get C
+        CHECK_CUSPARSE( cusparseSpMM(handle,
+            CUSPARSE_OPERATION_NON_TRANSPOSE,
+            CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matA, matB, &beta, matC, CUDA_FMT,
+            CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) );
+        apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
         // Execute SpMM for the second multiplication (matA^T * matC -> matD)
         CHECK_CUSPARSE(cusparseSpMM(handle,
                                     CUSPARSE_OPERATION_TRANSPOSE,
@@ -386,28 +418,28 @@ int main(int argc, char* argv[]) {
                                     CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
 
         apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
+        
+        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols, hSp);
+        compute_and_push_sp(blashandle, dD, dD, dSp, B_num_cols, A_num_cols, hSp);
 
+        // Next multiply by A to get C
         CHECK_CUSPARSE( cusparseSpMM(handle,
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         &alpha, matA, matD, &beta, matC, CUDA_FMT,
                                         CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
         apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
+        // and by A^T to get B
+        CHECK_CUSPARSE(cusparseSpMM(handle,
+            CUSPARSE_OPERATION_TRANSPOSE,
+            CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matA, matC, &beta, matB, CUDA_FMT,
+            CUSPARSE_SPMM_ALG_DEFAULT, dBuffer));
 
-        CUBLAS_CHECK(
-            cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, B_num_cols, B_num_cols, A_num_cols, &alpha, dD, A_num_cols, dD, A_num_cols, &beta, dSp, B_num_cols));
+        apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         
-            apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
-
-            // Copy the device buffer dSp to a local host buffer
-            CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
-        
-            // print the first 10 entries of the result
-            std::cout << "dSp (first 10 entries): ";
-            for (int i = 0; i < 10 && i < Sp_size; ++i) {
-                std::cout << hSp[i] << " ";
-            }
-            std::cout << std::endl;
+        compute_and_push_sp(blashandle, dB, dD, dSp, B_num_cols, A_num_cols, hSp);
+        compute_and_push_sp(blashandle, dB, dB, dSp, B_num_cols, A_num_cols, hSp);
 
         // CHECK_CUBLAS(cublasGemmEx(
         //     handle,
