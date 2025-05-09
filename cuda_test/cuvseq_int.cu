@@ -728,7 +728,7 @@ int main(int argc, char* argv[]) {
             dB, dC
         );
         // display_cuda_buffer(dC, C_size, 10);
-        err = cudaGetLastError();
+        cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess)
             printf("CUDA Error: %s\n", cudaGetErrorString(err));
         toc("Handcrafted 2d...:");
