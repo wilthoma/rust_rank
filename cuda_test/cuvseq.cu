@@ -201,11 +201,15 @@ static std::vector<std::vector<myfloat>> hSp_list;
 int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
     myfloat alpha           = 1.0f;
     myfloat beta            = 0.0f;
+    // float alpha = 1.0f;
+    // float beta = 0.0f;
     int Sp_size = n_dense_vectors * n_dense_vectors;
     std::vector<myfloat> hSp(Sp_size);
 
     CUBLAS_CHECK(
-        cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
+        // cublasDgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
+    
+        cublasSgemm(blashandle, CUBLAS_OP_T, CUBLAS_OP_N, n_dense_vectors, n_dense_vectors, n_veclen, &alpha, dM1, n_veclen, dM2, n_veclen, &beta, dSp, n_dense_vectors));
     
         apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
 
@@ -225,31 +229,6 @@ int compute_and_push_sp(cublasHandle_t blashandle, myfloat* dM1, myfloat* dM2, m
 }
 
 int main(int argc, char* argv[]) {
-    // Host problem definition
-    // int   A_num_rows      = 4;
-    // int   A_num_cols      = 4;
-    // int   A_nnz           = 9;
-    // int   B_num_rows      = A_num_cols;
-    // int   B_num_cols      = 3;
-    // int   ldb             = B_num_rows;
-    // int   ldc             = A_num_rows;
-    // int   B_size          = ldb * B_num_cols;
-    // int   C_size          = ldc * B_num_cols;
-    // int   hA_csrOffsets[] = { 0, 3, 4, 7, 9 };
-    // int   hA_columns[]    = { 0, 2, 3, 1, 0, 2, 3, 1, 3 };
-    // float hA_values[]     = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
-    //                           6.0f, 7.0f, 8.0f, 9.0f };
-    // float hB[]            = { 1.0f,  2.0f,  3.0f,  4.0f,
-    //                           5.0f,  6.0f,  7.0f,  8.0f,
-    //                           9.0f, 10.0f, 11.0f, 12.0f };
-    // float hC[]            = { 0.0f, 0.0f, 0.0f, 0.0f,
-    //                           0.0f, 0.0f, 0.0f, 0.0f,
-    //                           0.0f, 0.0f, 0.0f, 0.0f };
-    // float hC_result[]     = { 19.0f,  8.0f,  51.0f,  52.0f,
-    //                           43.0f, 24.0f, 123.0f, 120.0f,
-    //                           67.0f, 40.0f, 195.0f, 188.0f };
-    // float alpha           = 1.0f;
-    // float beta            = 0.0f;
 
     // load matrix from file
     if (argc < 3) {
@@ -300,18 +279,11 @@ int main(int argc, char* argv[]) {
     int   C_size          = ldc * B_num_cols;
     int* hA_csrOffsets = &csrOffsets[0];
     // std::copy(csrOffsets.begin(), csrOffsets.end(), hA_csrOffsets);
-    int*   hA_columns    = &csrColumns[0]; //{ 0, 2, 3, 1, 0, 2, 3, 1, 3 };
-    myfloat* hA_values     = &csrValues[0]; //{ 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
-                          //    6.0f, 7.0f, 8.0f, 9.0f };
-    myfloat* hB            = &h_dense[0];//{ 1.0f,  2.0f,  3.0f,  4.0f,
-                           //   5.0f,  6.0f,  7.0f,  8.0f,
-                           //   9.0f, 10.0f, 11.0f, 12.0f };
-    myfloat* hC            = &c_dense[0]; //{ 0.0f, 0.0f, 0.0f, 0.0f,
-                            //   0.0f, 0.0f, 0.0f, 0.0f,
-                            //   0.0f, 0.0f, 0.0f, 0.0f };
-    myfloat* hC_result     = &c_result[0]; //{ 19.0f,  8.0f,  51.0f,  52.0f,
-                            //   43.0f, 24.0f, 123.0f, 120.0f,
-                            //   67.0f, 40.0f, 195.0f, 188.0f };
+    int*   hA_columns    = &csrColumns[0]; 
+    myfloat* hA_values     = &csrValues[0]; 
+    myfloat* hB            = &h_dense[0];
+    myfloat* hC            = &c_dense[0]; 
+    myfloat* hC_result     = &c_result[0]; 
     myfloat alpha           = 1.0f;
     myfloat beta            = 0.0f;
 
