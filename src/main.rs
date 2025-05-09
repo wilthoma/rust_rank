@@ -380,7 +380,7 @@ fn main() {
     let num_v = num_workers * lanes; // the total number of vectors v for which we compute A^kv
 
     let mut prime = pprime as MyInt;
-    let wdm_filename = if transpose_matrix {format!("{}_{}_t.wdm", filename, num_v) } else {format!("{}_{}.wdm", filename, num_v)}; 
+    let mut wdm_filename = if transpose_matrix {format!("{}_{}_t.wdm", filename, num_v) } else {format!("{}_{}.wdm", filename, num_v)}; 
 
     if num_threads > 0 {
         rayon::ThreadPoolBuilder::new()
@@ -398,6 +398,7 @@ fn main() {
     let only_load_wdm = filename.ends_with(".wdm") && std::path::Path::new(&wdm_filename).exists();
     if only_load_wdm {
         println!("Filename ends with .wdm, we only load {} and run sequence analysis.", filename);
+        wdm_filename = filename.to_string();
     }
 
     // preconditioners for the matrix
