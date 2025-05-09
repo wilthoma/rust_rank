@@ -380,7 +380,7 @@ int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_ve
 
     cudaMemset(dSp, 0, n_dense_vectors * n_dense_vectors * sizeof(myfloat));
 
-    int num_chunks = (n_veclen + chunk_size - 1) / DOT_CHUNK_SIZE;
+    int num_chunks = (n_veclen + DOT_CHUNK_SIZE - 1) / DOT_CHUNK_SIZE;
     dim3 blockDim(16, 16);  // threads per block
     dim3 gridDim(num_chunks,
                  (n_dense_vectors + blockDim.y - 1) / blockDim.y,
