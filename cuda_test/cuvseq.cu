@@ -366,7 +366,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
-    transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
+    //transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
     std::cout << "CSR matrix transposed." << std::endl;
     std::cout << "Transposed matrix size: " << numCols << "x" << numRows << std::endl;
     std::cout << "Transposed matrix nnz: " << csrValuesT.size() << std::endl;
