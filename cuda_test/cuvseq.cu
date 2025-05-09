@@ -113,6 +113,7 @@
 // #define CUDA_FMT CUDA_R_64F
 // #define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_CSR_ALG3
 #define CUSPARSE_TRANS_ALGO CUSPARSE_SPMM_ALG_DEFAULT
+#define CUSPARSE_NORMAL_ALGO CUSPARSE_SPMM_CSR_ALG1
 
 void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
     std::ifstream file(filename);  // Make sure to include <fstream>
@@ -476,7 +477,7 @@ int main(int argc, char* argv[]) {
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &alpha, matA, matB, &beta, matC, CUDA_FMT,
-        CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
+        CUSPARSE_NORMAL_ALGO, &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
     // CHECK_CUSPARSE( cusparseSpMM_bufferSize(
     //     handle,
@@ -505,7 +506,7 @@ int main(int argc, char* argv[]) {
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matC, CUDA_FMT,
-                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+                                 CUSPARSE_NORMAL_ALGO, dBuffer) )
     // CHECK_CUSPARSE( cusparseSpMM_preprocess(
     //                                 handle,
     //                                 CUSPARSE_OPERATION_TRANSPOSE,
@@ -539,7 +540,7 @@ int main(int argc, char* argv[]) {
             CUSPARSE_OPERATION_NON_TRANSPOSE,
             CUSPARSE_OPERATION_NON_TRANSPOSE,
             &alpha, matA, matB, &beta, matC, CUDA_FMT,
-            CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) );
+            CUSPARSE_NORMAL_ALGO, dBuffer) );
         toc("SpMM A*B->C");
         tic();
         apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
@@ -572,7 +573,7 @@ int main(int argc, char* argv[]) {
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         &alpha, matA, matD, &beta, matC, CUDA_FMT,
-                                        CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+                                        CUSPARSE_NORMAL_ALGO, dBuffer) )
         apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
         // and by A^T to get B
         // CHECK_CUSPARSE(cusparseSpMM(handle,
@@ -603,29 +604,6 @@ int main(int argc, char* argv[]) {
         //     CUBLAS_GEMM_DEFAULT));                                
     
     }
-
-        // Copy the result from device to host
-        // std::vector<myfloat> d_result(A_num_rows * B_num_cols);
-        // CHECK_CUDA(cudaMemcpy(d_result.data(), dD, D_size * sizeof(myfloat),
-        //                       cudaMemcpyDeviceToHost));
-
-
-
-
-    // execute preprocess (optional)
-    // CHECK_CUSPARSE( cusparseSpMM_preprocess(
-    //     handle,
-    //     CUSPARSE_OPERATION_TRANSPOSE,
-    //     CUSPARSE_OPERATION_NON_TRANSPOSE,
-    //     &alpha, matA, matC, &beta, matC, CUDA_FMT,
-    //     CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
-
-    // // execute SpMM
-    // CHECK_CUSPARSE( cusparseSpMM(handle,
-    //         CUSPARSE_OPERATION_NON_TRANSPOSE,
-    //         CUSPARSE_OPERATION_NON_TRANSPOSE,
-    //         &alpha, matA, matB, &beta, matC, CUDA_FMT,
-    //         CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
 
 
 
