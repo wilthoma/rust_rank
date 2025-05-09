@@ -421,6 +421,47 @@ std::vector<myfloat> generate_random_vector(int size, bool only_nonzero=false) {
     return random_vector;
 }
 
+void csr_columnrescale(
+    int numRows,
+    int numCols,
+    const std::vector<int>& csrOffsets,
+    const std::vector<int>& csrColumns,
+    std::vector<myfloat>& csrValues,
+    const std::vector<myfloat>& scale_factors,
+    myfloat p) 
+{
+    if (scale_factors.size() != numCols) {
+        std::cerr << "Error: scale_factors size does not match number of columns." << std::endl;
+        return;
+    }
+    int nnz = csrValues.size();
+    for (int i=0;i<nnz;i++) {
+        csrValues[i] = (csrValues[i] * scale_factors[csrColumns[i]]) % p;
+    }
+}
+void csr_rowrescale(
+    int numRows,
+    int numCols,
+    const std::vector<int>& csrOffsets,
+    const std::vector<int>& csrColumns,
+    std::vector<myfloat>& csrValues,
+    const std::vector<myfloat>& scale_factors,
+    myfloat p) 
+{
+    if (scale_factors.size() != numRows) {
+        std::cerr << "Error: scale_factors size does not match number of rows." << std::endl;
+        return;
+    }
+    for (int row=0;row<numRows;row++) {
+        int start = csrOffsets[row];
+        int end = csrOffsets[row + 1];
+        myfloat scale = scale_factors[row];
+        for (int idx = start; idx < end; ++idx) {
+            csrValues[idx] = (csrValues[idx] * scale) % p;
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
 
     // load matrix from file
@@ -464,6 +505,13 @@ int main(int argc, char* argv[]) {
         std::cerr << "Transposed CSR matrix is invalid." << std::endl;
         return -1;
     }
+
+    // Rescale the csr matrices
+    std::vector<myfloat> scale_factors_rows(numRows, true);
+    std::vector<myfloat> scale_factors_cols(numCols, true);
+    csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
+    csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
+    csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
 
     std::cout<< "A";
 
