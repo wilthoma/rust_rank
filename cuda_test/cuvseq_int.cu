@@ -653,14 +653,19 @@ int save_all_data(
     const std::vector<std::vector<myfloat>>& sp_list
 ) 
 {
+
+    std::cout << "Saving data to " << filename << "..." << std::endl;
+
     // read data from cuda buffer
     std::vector<myfloat> hB(n_cols * n_dense_cols);
     CHECK_CUDA(cudaMemcpy(hB.data(), dB, n_cols * n_dense_cols * sizeof(myfloat), cudaMemcpyDeviceToHost));
     
+    std::cout << "A" << std::endl;
+
     // translate into vector of vectors
     std::vector<std::vector<myfloat>> cur_B = reshape_to_vector_of_vectors(hB, n_cols);
     std::vector<std::vector<myfloat>> ini_B = reshape_to_vector_of_vectors(initial_B, n_cols);
-
+std::cout << "A" << std::endl;
     // select upper triangular part of sp_list
     int nlen = sp_list.size(); 
     std::vector<std::vector<myfloat>> sp_list_upper;
@@ -673,6 +678,7 @@ int save_all_data(
             sp_list_upper.push_back(sp_row);
         }
     }
+    std::cout << "A" << std::endl;
 
     save_wdm_file_sym(
         filename,
