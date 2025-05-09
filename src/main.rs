@@ -579,13 +579,15 @@ fn main() {
     // convert seq to a vector of u64
     println!("Sequence computed, running Berlekamp-Massey...");
     // let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
-    let start_time = std::time::Instant::now();
-    let bmres = block_berlekamp_massey(seq.clone(), num_v, num_v, prime );
-    // let bmres: Vec<u64> = bubblemath::linear_recurrence::berlekamp_massey(&useq, prime as u64);
-    let duration = start_time.elapsed();
-    println!("Time taken for Berlekamp-Massey: {:?}", duration);
-    println!("Berlekamp-Massey result: {:?}", bmres.len());
-    println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
+    if num_v == 1 {
+        let start_time = std::time::Instant::now();
+        let bmres = block_berlekamp_massey(seq.clone(), num_v, num_v, prime );
+        // let bmres: Vec<u64> = bubblemath::linear_recurrence::berlekamp_massey(&useq, prime as u64);
+        let duration = start_time.elapsed();
+        println!("Time taken for Berlekamp-Massey: {:?}", duration);
+        println!("Berlekamp-Massey result: {:?}", bmres.len());
+        println!("First coeff: {:} Last coeff: {:}", bmres[0], bmres[bmres.len()-1]);
+    }
     // println!("{:?}", bmres);
 
     // take for d the max power of two fitting the number of available tokens
