@@ -627,9 +627,10 @@ void save_wdm_file_sym(
 
     // Write the seq_list
     for (const auto& seq : seq_list) {
-        for (size_t i = 0; i < seq.size(); ++i) {
+        auto seq_pretty = prettify_vect(seq, theprime);
+        for (size_t i = 0; i < seq_pretty.size(); ++i) {
             if (i > 0) file << " ";
-            file << seq[i];
+            file << seq_pretty[i];
         }
         file << "\n";
     }
