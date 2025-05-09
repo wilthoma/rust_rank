@@ -431,7 +431,7 @@ int main(int argc, char* argv[]) {
                                     CUSPARSE_OPERATION_TRANSPOSE,
                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                     &alpha, matA, matC, &beta, matD, CUDA_FMT,
-                                    CUSPARSE_SPMM_CSR_ALG2, dBuffer));
+                                    CUSPARSE_SPMM_CSR_ALG3, dBuffer));
 
         toc("SpMM A^T*C->D");
         tic();
