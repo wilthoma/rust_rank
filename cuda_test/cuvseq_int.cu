@@ -710,7 +710,7 @@ int main(int argc, char* argv[]) {
         tic();
         int threads_per_block = 128;
         int blocks_per_grid = (A_num_rows + threads_per_block - 1) / threads_per_block;
-        
+        display_cuda_buffer(dB, B_size, 10);
         csr_spmm_naive<<<blocks_per_grid, threads_per_block>>>(
             A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
             dB, dC
