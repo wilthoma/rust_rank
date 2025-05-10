@@ -268,6 +268,12 @@ __global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
         device_matrix[index] = my_function(device_matrix[index]);
     }
 }
+__global__ void apply_function_kernel_offset(myfloat *device_matrix, int offset, int matrix_size) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < matrix_size) {
+        device_matrix[index+offset] = my_function(device_matrix[index+offset]);
+    }
+}
 
 auto tic_start_time= std::chrono::high_resolution_clock::now();
 
@@ -427,6 +433,39 @@ __global__ void dense_gemm_TN_chunked3D(int n, int k,  // n = n_dense_vectors, k
     }
 }
 
+__global__ void dense_gemm_TN_chunked3D_offset(int n, int k,  // n = n_dense_vectors, k = n_veclen
+    const myfloat* __restrict__ A,  // Transposed: A^T [n x k]
+    const myfloat* __restrict__ B,  // B [k x n]
+    myfloat* C,                    // Output: [n x n] slice of C at position offset
+    int offset, // offset in C, in units of myfloat
+    int chunk_size)
+{
+    int chunk = blockIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.z * blockDim.x + threadIdx.x;
+
+    // TODO : check it is the correct order (not <)
+    // we only need to compute half the matrix
+    // We waste a bit of buffer, though
+    if row > col {
+        return;
+    }
+
+    int chunk_start = chunk * chunk_size;
+    int chunk_end = min(chunk_start + chunk_size, k);
+
+    if (row < n && col < n) {
+        myfloat acc = 0;
+        for (int i = chunk_start; i < chunk_end; ++i) {
+            acc += A[i * n + row] * B[i * n + col];  
+            // acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
+        }
+
+        // Accumulate the result into global memory (C[row + col * n])
+        atomicAdd(&C[row + col * n + offset], acc % THESMALLPRIME);
+    }
+}
+
 static std::vector<std::vector<myfloat>> hSp_list;
 
 int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
@@ -462,6 +501,40 @@ int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_ve
         return 0;
 }
 
+int compute_and_push_bigsp(myfloat* dM1, myfloat* dM2, myfloat* dBigSp, int n_dense_vectors, int n_veclen, int &seq_position) {
+    int Sp_size = n_dense_vectors * n_dense_vectors;
+    //std::vector<myfloat> hSp(Sp_size);
+
+    //cudaMemset(dSp, 0, n_dense_vectors * n_dense_vectors * sizeof(myfloat));
+
+    int num_chunks = (n_veclen + DOT_CHUNK_SIZE - 1) / DOT_CHUNK_SIZE;
+    dim3 blockDim(16, 16);  // threads per block
+    dim3 gridDim(num_chunks,
+                 (n_dense_vectors + blockDim.y - 1) / blockDim.y,
+                 (n_dense_vectors + blockDim.x - 1) / blockDim.x);
+    
+    int offset = seq_position * Sp_size; // offset in units of myfloat
+    dense_gemm_TN_chunked3D_offset<<<gridDim, blockDim>>>(
+        n_dense_vectors, n_veclen, dM1, dM2, dBigSp, offset, DOT_CHUNK_SIZE
+    );
+
+        apply_function_kernel_offset<<<((Sp_size + 255) / 256), 256>>>(dBigSp, offset, Sp_size);
+        seq_position++;
+
+        // Copy the device buffer dSp to a local host buffer
+        //CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    
+        // print the first 10 entries of the result
+        // std::cout << "dSp (first 10 entries): ";
+        // for (int i = 0; i < 10 && i < Sp_size; ++i) {
+        //     std::cout << hSp[i] << " ";
+        // }
+        // std::cout << std::endl;
+        
+        //hSp_list.push_back(hSp);
+
+        return 0;
+}
 
 
 std::vector<myfloat> generate_random_vector(int size, bool only_nonzero=false) {
@@ -658,7 +731,8 @@ int save_all_data(
     const std::vector<myfloat>& col_precond,
     const std::vector<myfloat>& initial_B,
     const myfloat* dB,
-    const std::vector<std::vector<myfloat>>& sp_list
+    const std::vector<myfloat>& hBigSp,
+    //const std::vector<std::vector<myfloat>>& sp_list
 ) 
 {
 
@@ -674,7 +748,8 @@ int save_all_data(
     std::vector<std::vector<myfloat>> cur_B = reshape_to_vector_of_vectors(hB, n_cols);
     std::cout << "A" << std::endl;
     std::vector<std::vector<myfloat>> ini_B = reshape_to_vector_of_vectors(initial_B, n_cols);
-std::cout << "A" << std::endl;
+    std::cout << "A" << std::endl;
+    std::vector<std::vector<myfloat>> sp_list = reshape_to_vector_of_vectors(hBigSp, n_dense_cols*n_dense_cols);
     // select upper triangular part of sp_list
     int nlen = sp_list.size(); 
     std::vector<std::vector<myfloat>> sp_list_upper;
@@ -872,6 +947,7 @@ int main(int argc, char* argv[]) {
     myfloat* hC_result     = &c_result[0]; 
 
 
+
     // std::cout<< "A";
     //--------------------------------------------------------------------------
     // Device memory management
@@ -921,12 +997,16 @@ int main(int argc, char* argv[]) {
 
     
 
-    myfloat *dSp;
+    myfloat *dSp, *dBigSp;
     int Sp_size = B_num_cols * B_num_cols;
     CHECK_CUDA(cudaMalloc((void**)&dSp, Sp_size * sizeof(myfloat)));
     CHECK_CUDA(cudaMemset(dSp, 0, Sp_size * sizeof(myfloat)));
     // int ldsp = B_num_cols; // Leading dimension of D
-
+    // buffer for holding the whole sequence
+    int bigSp_len = seq_len+5; // +5 to be safe
+    int bigSp_size = Sp_size * bigSp_len;
+    CHECK_CUDA(cudaMalloc((void**)&dBigSp, bigSp_size * sizeof(myfloat)));
+    CHECK_CUDA(cudaMemset(dBigSp, 0, bigSp_size * sizeof(myfloat)));
     
     
     CHECK_CUDA(cudaEventCreate(&start));
@@ -934,14 +1014,17 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaEventRecord(start, 0));
 
     
+    int seq_position = 0; // the current write position into the output sequence buffer dBigSp
 
-    compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
+    compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);
+    // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
     dim3 blockDim(16, 32);
     dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
                 (B_num_cols + blockDim.y - 1) / blockDim.y);
     dim3 blockDimT(16, 32);
     dim3 gridDimT((A_num_cols + blockDimT.x - 1) / blockDimT.x,
                 (B_num_cols + blockDimT.y - 1) / blockDimT.y);
+
     for (int round=0;round<seq_len/4;round++){
         if (round%10==0){
             std::cout << "Round " << round << std::endl;
@@ -1002,8 +1085,10 @@ int main(int argc, char* argv[]) {
         toc("apply_function_kernel D");
         
         tic();
-        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
-        compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_bigsp(dB, dD, dSp, B_num_cols, A_num_cols, seq_position);
+        compute_and_push_bigsp(dD, dD, dSp, B_num_cols, A_num_cols, seq_position);
+        // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        // compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
         toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
@@ -1034,11 +1119,19 @@ int main(int argc, char* argv[]) {
         );
         apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         
-        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
-        compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);                               
-    
+        compute_and_push_bigsp(dB, dD, dBigSp, B_num_cols, A_num_cols, seq_position);
+        compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);                               
+        // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols); 
     }
 
+    // extract the sequence from dBigSp
+    std::cout << "Extracting the sequence from dBigSp" << std::endl;
+    int effectivesize = seq_position * Sp_size;
+    std::vector<myfloat> hBigSp(effectivesize);
+    CHECK_CUDA(cudaMemcpy(hSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    std::cout << "Done.";
+    // std::cout << "hSp (first 10 entries): ";
 
 
     CHECK_CUDA(cudaDeviceSynchronize());
@@ -1097,7 +1190,8 @@ int main(int argc, char* argv[]) {
         scale_factors_cols,
         h_dense,
         dB,
-        hSp_list
+        hBigSp
+        //hSp_list
     );
 
     int slen = hSp_list.size();
