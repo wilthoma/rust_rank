@@ -1016,8 +1016,8 @@ int main(int argc, char* argv[]) {
     
     int seq_position = 0; // the current write position into the output sequence buffer dBigSp
 
-    compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);
-    // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
+    // compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);
+    compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
     dim3 blockDim(16, 32);
     dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
                 (B_num_cols + blockDim.y - 1) / blockDim.y);
@@ -1085,10 +1085,10 @@ int main(int argc, char* argv[]) {
         toc("apply_function_kernel D");
         
         tic();
-        compute_and_push_bigsp(dB, dD, dSp, B_num_cols, A_num_cols, seq_position);
-        compute_and_push_bigsp(dD, dD, dSp, B_num_cols, A_num_cols, seq_position);
-        // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
-        // compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
+        // compute_and_push_bigsp(dB, dD, dSp, B_num_cols, A_num_cols, seq_position);
+        // compute_and_push_bigsp(dD, dD, dSp, B_num_cols, A_num_cols, seq_position);
+        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
         toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
@@ -1119,20 +1119,23 @@ int main(int argc, char* argv[]) {
         );
         apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         
-        compute_and_push_bigsp(dB, dD, dBigSp, B_num_cols, A_num_cols, seq_position);
-        compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);                               
-        // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
-        // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols); 
+        // compute_and_push_bigsp(dB, dD, dBigSp, B_num_cols, A_num_cols, seq_position);
+        // compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);                               
+        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
+        
     }
 
-    // extract the sequence from dBigSp
-    std::cout << "Extracting the sequence from dBigSp" << std::endl;
-    int effectivesize = seq_position * Sp_size;
-    std::vector<myfloat> hBigSp(effectivesize);
-    CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
-    std::cout << "Done.";
-    // std::cout << "hSp (first 10 entries): ";
+    seq_position = hSp_list.size();
 
+    // extract the sequence from dBigSp
+    // std::cout << "Extracting the sequence from dBigSp" << std::endl;
+    // int effectivesize = seq_position * Sp_size;
+    // std::vector<myfloat> hBigSp(effectivesize);
+    // CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    // std::cout << "Done.";
+    // std::cout << "hSp (first 10 entries): ";
+    
 
     CHECK_CUDA(cudaDeviceSynchronize());
     // destroy matrix/vector descriptors
@@ -1180,19 +1183,19 @@ int main(int argc, char* argv[]) {
     //     }
     // }
 
-    save_all_data(
-        outfile,
-        A_num_rows,
-        A_num_cols,
-        B_num_cols,
-        THESMALLPRIME,
-        scale_factors_rows,
-        scale_factors_cols,
-        h_dense,
-        dB,
-        hBigSp
-        //hSp_list
-    );
+    // save_all_data(
+    //     outfile,
+    //     A_num_rows,
+    //     A_num_cols,
+    //     B_num_cols,
+    //     THESMALLPRIME,
+    //     scale_factors_rows,
+    //     scale_factors_cols,
+    //     h_dense,
+    //     dB,
+    //     hBigSp
+    //     //hSp_list
+    // );
 
     int slen = hSp_list.size();
     std::vector<myfloat> oneseq(slen,0);
