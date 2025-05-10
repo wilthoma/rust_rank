@@ -6,7 +6,7 @@ cd /r/scratch/users/wilthoma/gh_data/data/ordinary/odd_edges/
 git pull && /usr/local/cuda/bin/nvcc cupretest.cu -lcusparse -o cupretest 
 git pull && /usr/local/cuda/bin/nvcc cuvseq.cu -lcusparse -o cuvseq  -lcublas
 
-git pull && /usr/local/cuda/bin/nvcc cuvseq_int.cu -lcusparse -o cuvseq_int -lcublas
+git pull && /usr/local/cuda/bin/nvcc cuvseq_int.cu -o cuvseq_int 
 
 
 module load modules/EasyBuild && module load GCC/13.3.0 && cd prog/tmp3/rust_rank/cuda_test

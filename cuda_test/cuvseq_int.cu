@@ -447,7 +447,7 @@ __global__ void dense_gemm_TN_chunked3D_offset(int n, int k,  // n = n_dense_vec
     // TODO : check it is the correct order (not <)
     // we only need to compute half the matrix
     // We waste a bit of buffer, though
-    if row > col {
+    if (row > col) {
         return;
     }
 
@@ -731,7 +731,7 @@ int save_all_data(
     const std::vector<myfloat>& col_precond,
     const std::vector<myfloat>& initial_B,
     const myfloat* dB,
-    const std::vector<myfloat>& hBigSp,
+    const std::vector<myfloat>& hBigSp
     //const std::vector<std::vector<myfloat>>& sp_list
 ) 
 {
@@ -1129,7 +1129,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Extracting the sequence from dBigSp" << std::endl;
     int effectivesize = seq_position * Sp_size;
     std::vector<myfloat> hBigSp(effectivesize);
-    CHECK_CUDA(cudaMemcpy(hSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
     std::cout << "Done.";
     // std::cout << "hSp (first 10 entries): ";
 
