@@ -93,6 +93,8 @@ __global__ void dense_gemm_TN_chunked3D_offset(int n, int k,  // n = n_dense_vec
     }
 }
 
+template<typename T>
+struct CudaDenseMatrix;
 
 template<typename T>
 struct CudaCsrMatrix {

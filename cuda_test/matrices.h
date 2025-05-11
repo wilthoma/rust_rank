@@ -116,7 +116,7 @@ struct CsrMatrix {
         // Step 2: Compute row_ptr for transposed matrix
         std::vector<int> tmprow_ptr_t(numCols+1, 0);
         // row_ptr_t.resize(n_cols + 1, 0);
-        for (int i = 0; i < n_cols; ++i) {
+        for (int i = 0; i < numCols; ++i) {
             tmprow_ptr_t[i + 1] = tmprow_ptr_t[i] + nnz_per_col[i];
         }
     
@@ -216,7 +216,7 @@ struct CooMatrix {
 
     
 
-    public static CooMatrix<T> from_sms_file(const std::string& filename, T prime) {
+    static CooMatrix<T> from_sms_file(const std::string& filename, T prime) {
         std::ifstream file(filename);  // Make sure to include <fstream>
         if (!file) {
             std::cerr << "Failed to open file: " << filename << std::endl;
@@ -224,6 +224,7 @@ struct CooMatrix {
         }
     
         char arbitraryChar;
+        int numRows, numCols;
         file >> numRows >> numCols >> arbitraryChar;
     
         std::vector<int> tempRowIndices;
