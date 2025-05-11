@@ -614,8 +614,8 @@ void report_progress(
     const std::string& suffix = ""
 ) {
 
-    double speed = static_cast<double>(nlen - last_nlen) / (elapsed - last_report) / 1000;
-    double remaining = static_cast<double>(max_nlen - nlen) / speed / 1000;
+    double speed = static_cast<double>(nlen - last_nlen) / (elapsed - last_report) * 1000;
+    double remaining = static_cast<double>(max_nlen - nlen) / speed;
 
     std::cout << "\rProgress: " << nlen << "/" << max_nlen
               << " | Elapsed: " << (elapsed/1000) << "s"
