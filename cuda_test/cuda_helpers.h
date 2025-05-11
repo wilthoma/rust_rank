@@ -192,7 +192,9 @@ struct CudaDenseMatrix {
 
     void modp(T prime) {
         int size = numRows * numCols;
-        CHECK_CUDA(modp_kernel<<<((size + 255) / 256), 256>>>(d_data, size, 0, prime));
+        //CHECK_CUDA(
+            modp_kernel<<<((size + 255) / 256), 256>>>(d_data, size, 0, prime);
+        //);
     }
 
     // computes the upper tringular part of this^T* B and stores the desult in dC, at position position
