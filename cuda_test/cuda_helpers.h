@@ -136,7 +136,7 @@ struct CudaCsrMatrix {
         if (numCols != B.numRows) {
             throw std::runtime_error("Matrix dimensions do not match for SpMM.");
         }
-        if (C.numRows != numRows || C.numCols != dense_matrix.numCols) {
+        if (C.numRows != numRows || C.numCols != B.numCols) {
             throw std::runtime_error("Result matrix dimensions do not match.");
         }
         dim3 blockDim(16, 32);
