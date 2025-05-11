@@ -614,13 +614,13 @@ void report_progress(
     const std::string& suffix = ""
 ) {
 
-    double speed = static_cast<double>(nlen - last_nlen) / std::chrono::duration_cast<std::chrono::seconds>(elapsed_last).count();
-    double remaining = static_cast<double>(max_nlen - nlen) / speed;
+    double speed = static_cast<double>(nlen - last_nlen) / (elapsed - last_report) / 1000;
+    double remaining = static_cast<double>(max_nlen - nlen) / speed / 1000;
 
     std::cout << "\rProgress: " << nlen << "/" << max_nlen
-              << " | Elapsed: " << std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() << "s"
+              << " | Elapsed: " << (elapsed/1000) << "s"
               << " | Throughput: " << speed << "/s (total " << speed * num_v << "/s)"
-              << " | Remaining: " << std::chrono::duration_cast<std::chrono::seconds>(std::chrono::duration<double>(remaining)).count() << "s"
+              << " | Remaining: " << remaining << "s"
               << " | " << suffix << "           " << std::flush;
 
     last_nlen = nlen;
@@ -667,7 +667,7 @@ int main(int argc, char* argv[]) {
         wdm_filename = sms_filename + ".wdm";
     }
 
-    T prime = pprime;
+    myfloat prime = pprime;
 
     // load matrix from file
     // if (argc < 5) {
@@ -684,7 +684,7 @@ int main(int argc, char* argv[]) {
     // int numRows, numCols, nnz;
     //auto loadStart = std::chrono::high_resolution_clock::now();
     stic();
-    CooMatrix<myfloat> cooA = CooMatrix::load_from_file(sms_filename, prime);
+    CooMatrix<myfloat> cooA = CooMatrix<myfloat>::load_from_file(sms_filename, prime);
     //load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
     ////auto loadStop = std::chrono::high_resolution_clock::now();
     // auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
