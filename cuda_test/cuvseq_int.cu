@@ -63,6 +63,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
+#include "include/CLI11.hpp"
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
@@ -858,6 +859,39 @@ std::tuple<uint32_t, size_t, size_t, size_t> load_wdm_file_sym(
 }
 
 int main(int argc, char* argv[]) {
+    CLI::App app{"Wiedemann sequence and rank computation"};
+
+    std::string filename;
+    bool overwrite = false;
+    bool benchmark = false;
+    bool transpose_matrix = false;
+
+    size_t max_nlen = 0;
+    size_t save_after = 200;
+    size_t num_v = 1;
+    uint32_t pprime = 0;
+
+    app.add_option("filename", filename, "The SMS file containing the sparse matrix")
+        ->required();
+
+    app.add_flag("-o,--overwrite", overwrite, "Overwrite existing files");
+
+    app.add_flag("--benchmark", benchmark, "Run matrix vector multiply benchmark, but no other computation.");
+    app.add_flag("--transpose", transpose_matrix, "Transpose the matrix.");
+
+    app.add_option("-N,--N", max_nlen, "The desired sequence length to be computed")
+        ->default_val(0);
+
+    app.add_option("-s,--saveafter", save_after, "Trigger automatic saves each s seconds.")
+        ->default_val(200);
+
+    app.add_option("-v", num_v, "The number of vectors v. The output will consist of symmetric matrices of size v x v.")
+        ->default_val(1);
+
+    app.add_option("-p,--prime", pprime, "The prime number to use for modular arithmetic");
+
+
+    CLI11_PARSE(app, argc, argv);
 
     // load matrix from file
     if (argc < 5) {
