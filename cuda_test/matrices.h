@@ -247,14 +247,14 @@ struct CooMatrix {
             }
         }
     
-        nnz = tempRowIndices.size();
-        rowIndices = std::move(tempRowIndices);
-        colIndices = std::move(tempColIndices);
-        values = std::move(tempValues);
+        // int nnz = tempRowIndices.size();
+        // rowIndices = std::move(tempRowIndices);
+        // colIndices = std::move(tempColIndices);
+        // values = std::move(tempValues);
     
         file.close();
 
-        return CooMatrix<T>(numRows, numCols, rowIndices, colIndices, values);
+        return CooMatrix<T>(numRows, numCols, std::move(tempRowIndices), std::move(tempColIndices), std::move(tempValues));
     }
 };
 
