@@ -122,30 +122,30 @@ vector<myfloat> berlekamp_massey(const vector<myfloat>& s, myfloat mod) {
 
 
 
-// Define your function here (e.g., increment each element)
-__device__ myfloat my_function(myfloat input) {
-    // return __int2double_rn(__double2int_rn(input) % THESMALLPRIME);
-    #if USE_DOUBLE
-        return fmod(input, 3323.0);
-    #else
-        //return fmod(input, 3323.0f);
-        return input % THESMALLPRIME;
-    #endif
-}
+// // Define your function here (e.g., increment each element)
+// __device__ myfloat my_function(myfloat input) {
+//     // return __int2double_rn(__double2int_rn(input) % THESMALLPRIME);
+//     #if USE_DOUBLE
+//         return fmod(input, 3323.0);
+//     #else
+//         //return fmod(input, 3323.0f);
+//         return input % THESMALLPRIME;
+//     #endif
+// }
   
-// CUDA kernel to apply the function
-__global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < matrix_size) {
-        device_matrix[index] = my_function(device_matrix[index]);
-    }
-}
-__global__ void apply_function_kernel_offset(myfloat *device_matrix, int offset, int matrix_size) {
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < matrix_size) {
-        device_matrix[index+offset] = my_function(device_matrix[index+offset]);
-    }
-}
+// // CUDA kernel to apply the function
+// __global__ void apply_function_kernel(myfloat *device_matrix, int matrix_size) {
+//     int index = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (index < matrix_size) {
+//         device_matrix[index] = my_function(device_matrix[index]);
+//     }
+// }
+// __global__ void apply_function_kernel_offset(myfloat *device_matrix, int offset, int matrix_size) {
+//     int index = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (index < matrix_size) {
+//         device_matrix[index+offset] = my_function(device_matrix[index+offset]);
+//     }
+// }
 
 auto tic_start_time= std::chrono::high_resolution_clock::now();
 
@@ -186,189 +186,189 @@ inline long long stoc()
 
 
 
-__global__ void csr_spmm_naive(
-    int M, int N,
-    const int *__restrict__ csr_row_ptr,
-    const int *__restrict__ csr_col_idx,
-    const myfloat *__restrict__ csr_val,
-    const myfloat *__restrict__ B, // dense matrix B [K x N]
-    myfloat *__restrict__ C        // output matrix C [M x N]
-) {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row >= M) return;
+// __global__ void csr_spmm_naive(
+//     int M, int N,
+//     const int *__restrict__ csr_row_ptr,
+//     const int *__restrict__ csr_col_idx,
+//     const myfloat *__restrict__ csr_val,
+//     const myfloat *__restrict__ B, // dense matrix B [K x N]
+//     myfloat *__restrict__ C        // output matrix C [M x N]
+// ) {
+//     int row = blockIdx.x * blockDim.x + threadIdx.x;
+//     if (row >= M) return;
 
-    // Initialize output row
-    for (int j = 0; j < N; j++) {
-        C[row * N + j] = 0.0;
-    }
+//     // Initialize output row
+//     for (int j = 0; j < N; j++) {
+//         C[row * N + j] = 0.0;
+//     }
 
-    // Iterate over non-zeros in row
-    int row_start = csr_row_ptr[row];
-    int row_end = csr_row_ptr[row + 1];
-    for (int idx = row_start; idx < row_end; idx++) {
-        int col = csr_col_idx[idx];
-        myfloat val = csr_val[idx];
+//     // Iterate over non-zeros in row
+//     int row_start = csr_row_ptr[row];
+//     int row_end = csr_row_ptr[row + 1];
+//     for (int idx = row_start; idx < row_end; idx++) {
+//         int col = csr_col_idx[idx];
+//         myfloat val = csr_val[idx];
 
-        for (int j = 0; j < N; j++) {
-            C[row * N + j] += val * B[col * N + j];
-        }
-    }
-}
+//         for (int j = 0; j < N; j++) {
+//             C[row * N + j] += val * B[col * N + j];
+//         }
+//     }
+// }
 
-__global__ void csr_spmm_2d(
-    int M, int N,
-    const int *__restrict__ csr_row_ptr,
-    const int *__restrict__ csr_col_idx,
-    const myfloat *__restrict__ csr_val,
-    const myfloat *__restrict__ B, // [K x N]
-    myfloat *__restrict__ C        // [M x N]
-) {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
+// __global__ void csr_spmm_2d(
+//     int M, int N,
+//     const int *__restrict__ csr_row_ptr,
+//     const int *__restrict__ csr_col_idx,
+//     const myfloat *__restrict__ csr_val,
+//     const myfloat *__restrict__ B, // [K x N]
+//     myfloat *__restrict__ C        // [M x N]
+// ) {
+//     int row = blockIdx.x * blockDim.x + threadIdx.x;
+//     int col = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (row >= M || col >= N) return;
+//     if (row >= M || col >= N) return;
 
-    myfloat sum = 0.0;
-    int start = csr_row_ptr[row];
-    int end = csr_row_ptr[row + 1];
+//     myfloat sum = 0.0;
+//     int start = csr_row_ptr[row];
+//     int end = csr_row_ptr[row + 1];
 
-    for (int idx = start; idx < end; idx++) {
-        int k = csr_col_idx[idx];
-        myfloat a = csr_val[idx];
-        myfloat b = B[k * N + col]; // column-major access of B
-        sum += a * b;
-    }
+//     for (int idx = start; idx < end; idx++) {
+//         int k = csr_col_idx[idx];
+//         myfloat a = csr_val[idx];
+//         myfloat b = B[k * N + col]; // column-major access of B
+//         sum += a * b;
+//     }
 
-    C[row * N + col] = sum;
-}
+//     C[row * N + col] = sum;
+// }
 
-__global__ void dense_gemm_TN_chunked3D(int n, int k,  // n = n_dense_vectors, k = n_veclen
-    const myfloat* __restrict__ A,  // Transposed: A^T [n x k]
-    const myfloat* __restrict__ B,  // B [k x n]
-    myfloat* C,                    // Output: C [n x n]
-    int chunk_size)
-{
-    int chunk = blockIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.z * blockDim.x + threadIdx.x;
+// __global__ void dense_gemm_TN_chunked3D(int n, int k,  // n = n_dense_vectors, k = n_veclen
+//     const myfloat* __restrict__ A,  // Transposed: A^T [n x k]
+//     const myfloat* __restrict__ B,  // B [k x n]
+//     myfloat* C,                    // Output: C [n x n]
+//     int chunk_size)
+// {
+//     int chunk = blockIdx.x;
+//     int row = blockIdx.y * blockDim.y + threadIdx.y;
+//     int col = blockIdx.z * blockDim.x + threadIdx.x;
 
-    int chunk_start = chunk * chunk_size;
-    int chunk_end = min(chunk_start + chunk_size, k);
+//     int chunk_start = chunk * chunk_size;
+//     int chunk_end = min(chunk_start + chunk_size, k);
 
-    if (row < n && col < n) {
-        myfloat acc = 0;
-        for (int i = chunk_start; i < chunk_end; ++i) {
-            acc += A[i * n + row] * B[i * n + col];  
-            // acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
-        }
+//     if (row < n && col < n) {
+//         myfloat acc = 0;
+//         for (int i = chunk_start; i < chunk_end; ++i) {
+//             acc += A[i * n + row] * B[i * n + col];  
+//             // acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
+//         }
 
-        // Accumulate the result into global memory (C[row + col * n])
-        atomicAdd(&C[row + col * n], acc % THESMALLPRIME);
-    }
-}
+//         // Accumulate the result into global memory (C[row + col * n])
+//         atomicAdd(&C[row + col * n], acc % THESMALLPRIME);
+//     }
+// }
 
-__global__ void dense_gemm_TN_chunked3D_offset(int n, int k,  // n = n_dense_vectors, k = n_veclen
-    const myfloat* __restrict__ A,  // Transposed: A^T [n x k]
-    const myfloat* __restrict__ B,  // B [k x n]
-    myfloat* C,                    // Output: [n x n] slice of C at position offset
-    int offset, // offset in C, in units of myfloat
-    int chunk_size)
-{
-    int chunk = blockIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.z * blockDim.x + threadIdx.x;
+// __global__ void dense_gemm_TN_chunked3D_offset(int n, int k,  // n = n_dense_vectors, k = n_veclen
+//     const myfloat* __restrict__ A,  // Transposed: A^T [n x k]
+//     const myfloat* __restrict__ B,  // B [k x n]
+//     myfloat* C,                    // Output: [n x n] slice of C at position offset
+//     int offset, // offset in C, in units of myfloat
+//     int chunk_size)
+// {
+//     int chunk = blockIdx.x;
+//     int row = blockIdx.y * blockDim.y + threadIdx.y;
+//     int col = blockIdx.z * blockDim.x + threadIdx.x;
 
-    // TODO : check it is the correct order (not <)
-    // we only need to compute half the matrix
-    // We waste a bit of buffer, though
-    if (row > col) {
-        return;
-    }
+//     // TODO : check it is the correct order (not <)
+//     // we only need to compute half the matrix
+//     // We waste a bit of buffer, though
+//     if (row > col) {
+//         return;
+//     }
 
-    int chunk_start = chunk * chunk_size;
-    int chunk_end = min(chunk_start + chunk_size, k);
+//     int chunk_start = chunk * chunk_size;
+//     int chunk_end = min(chunk_start + chunk_size, k);
 
-    if (row < n && col < n) {
-        myfloat acc = 0;
-        for (int i = chunk_start; i < chunk_end; ++i) {
-            acc += A[i * n + row] * B[i * n + col];  
-            // acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
-        }
+//     if (row < n && col < n) {
+//         myfloat acc = 0;
+//         for (int i = chunk_start; i < chunk_end; ++i) {
+//             acc += A[i * n + row] * B[i * n + col];  
+//             // acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
+//         }
 
-        // Accumulate the result into global memory (C[row + col * n])
-        atomicAdd(&C[row + col * n + offset], acc % THESMALLPRIME);
-    }
-}
+//         // Accumulate the result into global memory (C[row + col * n])
+//         atomicAdd(&C[row + col * n + offset], acc % THESMALLPRIME);
+//     }
+// }
 
-static std::vector<std::vector<myfloat>> hSp_list;
+// static std::vector<std::vector<myfloat>> hSp_list;
 
-int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
-    int Sp_size = n_dense_vectors * n_dense_vectors;
-    std::vector<myfloat> hSp(Sp_size);
+// int compute_and_push_sp(myfloat* dM1, myfloat* dM2, myfloat* dSp, int n_dense_vectors, int n_veclen) {
+//     int Sp_size = n_dense_vectors * n_dense_vectors;
+//     std::vector<myfloat> hSp(Sp_size);
 
-    cudaMemset(dSp, 0, n_dense_vectors * n_dense_vectors * sizeof(myfloat));
+//     cudaMemset(dSp, 0, n_dense_vectors * n_dense_vectors * sizeof(myfloat));
 
-    int num_chunks = (n_veclen + DOT_CHUNK_SIZE - 1) / DOT_CHUNK_SIZE;
-    dim3 blockDim(16, 16);  // threads per block
-    dim3 gridDim(num_chunks,
-                 (n_dense_vectors + blockDim.y - 1) / blockDim.y,
-                 (n_dense_vectors + blockDim.x - 1) / blockDim.x);
+//     int num_chunks = (n_veclen + DOT_CHUNK_SIZE - 1) / DOT_CHUNK_SIZE;
+//     dim3 blockDim(16, 16);  // threads per block
+//     dim3 gridDim(num_chunks,
+//                  (n_dense_vectors + blockDim.y - 1) / blockDim.y,
+//                  (n_dense_vectors + blockDim.x - 1) / blockDim.x);
     
-    dense_gemm_TN_chunked3D<<<gridDim, blockDim>>>(
-        n_dense_vectors, n_veclen, dM1, dM2, dSp, DOT_CHUNK_SIZE
-    );
+//     dense_gemm_TN_chunked3D<<<gridDim, blockDim>>>(
+//         n_dense_vectors, n_veclen, dM1, dM2, dSp, DOT_CHUNK_SIZE
+//     );
 
-        apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
+//         apply_function_kernel<<<((Sp_size + 255) / 256), 256>>>(dSp, Sp_size);
 
-        // Copy the device buffer dSp to a local host buffer
-        CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
+//         // Copy the device buffer dSp to a local host buffer
+//         CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
     
-        // print the first 10 entries of the result
-        // std::cout << "dSp (first 10 entries): ";
-        // for (int i = 0; i < 10 && i < Sp_size; ++i) {
-        //     std::cout << hSp[i] << " ";
-        // }
-        // std::cout << std::endl;
+//         // print the first 10 entries of the result
+//         // std::cout << "dSp (first 10 entries): ";
+//         // for (int i = 0; i < 10 && i < Sp_size; ++i) {
+//         //     std::cout << hSp[i] << " ";
+//         // }
+//         // std::cout << std::endl;
         
-        hSp_list.push_back(hSp);
+//         hSp_list.push_back(hSp);
 
-        return 0;
-}
+//         return 0;
+// }
 
-int compute_and_push_bigsp(myfloat* dM1, myfloat* dM2, myfloat* dBigSp, int n_dense_vectors, int n_veclen, int &seq_position) {
-    int Sp_size = n_dense_vectors * n_dense_vectors;
-    //std::vector<myfloat> hSp(Sp_size);
+// int compute_and_push_bigsp(myfloat* dM1, myfloat* dM2, myfloat* dBigSp, int n_dense_vectors, int n_veclen, int &seq_position) {
+//     int Sp_size = n_dense_vectors * n_dense_vectors;
+//     //std::vector<myfloat> hSp(Sp_size);
 
-    //cudaMemset(dSp, 0, n_dense_vectors * n_dense_vectors * sizeof(myfloat));
+//     //cudaMemset(dSp, 0, n_dense_vectors * n_dense_vectors * sizeof(myfloat));
 
-    int num_chunks = (n_veclen + DOT_CHUNK_SIZE - 1) / DOT_CHUNK_SIZE;
-    dim3 blockDim(16, 16);  // threads per block
-    dim3 gridDim(num_chunks,
-                 (n_dense_vectors + blockDim.y - 1) / blockDim.y,
-                 (n_dense_vectors + blockDim.x - 1) / blockDim.x);
+//     int num_chunks = (n_veclen + DOT_CHUNK_SIZE - 1) / DOT_CHUNK_SIZE;
+//     dim3 blockDim(16, 16);  // threads per block
+//     dim3 gridDim(num_chunks,
+//                  (n_dense_vectors + blockDim.y - 1) / blockDim.y,
+//                  (n_dense_vectors + blockDim.x - 1) / blockDim.x);
     
-    int offset = seq_position * Sp_size; // offset in units of myfloat
-    dense_gemm_TN_chunked3D_offset<<<gridDim, blockDim>>>(
-        n_dense_vectors, n_veclen, dM1, dM2, dBigSp, offset, DOT_CHUNK_SIZE
-    );
+//     int offset = seq_position * Sp_size; // offset in units of myfloat
+//     dense_gemm_TN_chunked3D_offset<<<gridDim, blockDim>>>(
+//         n_dense_vectors, n_veclen, dM1, dM2, dBigSp, offset, DOT_CHUNK_SIZE
+//     );
 
-    apply_function_kernel_offset<<<((Sp_size + 255) / 256), 256>>>(dBigSp, offset, Sp_size);
-    seq_position++;
+//     apply_function_kernel_offset<<<((Sp_size + 255) / 256), 256>>>(dBigSp, offset, Sp_size);
+//     seq_position++;
 
-    // Copy the device buffer dSp to a local host buffer
-    //CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
+//     // Copy the device buffer dSp to a local host buffer
+//     //CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
 
-    // print the first 10 entries of the result
-    // std::cout << "dSp (first 10 entries): ";
-    // for (int i = 0; i < 10 && i < Sp_size; ++i) {
-    //     std::cout << hSp[i] << " ";
-    // }
-    // std::cout << std::endl;
+//     // print the first 10 entries of the result
+//     // std::cout << "dSp (first 10 entries): ";
+//     // for (int i = 0; i < 10 && i < Sp_size; ++i) {
+//     //     std::cout << hSp[i] << " ";
+//     // }
+//     // std::cout << std::endl;
     
-    //hSp_list.push_back(hSp);
+//     //hSp_list.push_back(hSp);
 
-    return 0;
-}
+//     return 0;
+// }
 
 void compute_and_push_bigsp2(const CudaDenseMatrix<myfloat> &B, const CudaDenseMatrix<myfloat> &C, myfloat* dBigSp, int &seq_position, myfloat prime) {
     B.mTm_tri(C, dBigSp, seq_position, prime);
