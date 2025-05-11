@@ -684,11 +684,15 @@ int main(int argc, char* argv[]) {
     // int numRows, numCols, nnz;
     //auto loadStart = std::chrono::high_resolution_clock::now();
     stic();
-    CooMatrix<myfloat> cooA = CooMatrix<myfloat>::load_from_file(sms_filename, prime);
+    CooMatrix<myfloat> cooA = CooMatrix<myfloat>::from_sms_file(sms_filename, prime);
     //load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
     ////auto loadStop = std::chrono::high_resolution_clock::now();
     // auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
     std::cout << "Matrix loading runtime: " << stoc() << " ms" << std::endl;
+
+    if (max_nlen == 0) {
+        max_nlen = 2 * min(cooA.numRows, cooA.numCols)/num_v;
+    }
 
     //auto convertStart = std::chrono::high_resolution_clock::now();
     stic();
@@ -698,7 +702,7 @@ int main(int argc, char* argv[]) {
     //auto convertMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(convertStop - convertStart).count();
     std::cout << "COO to CSR conversion runtime: " << stoc() << " ms" << std::endl;
 
-    std::cout << A.numRows <<"x" << A.numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
+    std::cout << A.numRows <<"x" << A.numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << A.values.size() << std::endl;
 
     if (A.is_csr_valid()) {
         std::cout << "CSR matrix is valid." << std::endl;
@@ -723,8 +727,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Rescale the csr matrices
-    std::vector<myfloat> scale_factors_rows = generate_random_vector(numRows, prime, true);
-    std::vector<myfloat> scale_factors_cols = generate_random_vector(numCols, prime, true);
+    std::vector<myfloat> scale_factors_rows = generate_random_vector(A.numRows, prime, true);
+    std::vector<myfloat> scale_factors_cols = generate_random_vector(A.numCols, prime, true);
     A.csr_rowrescale(scale_factors_rows, prime);
     A.csr_columnrescale(scale_factors_cols, prime);
     AT.csr_rowrescale(scale_factors_cols, prime);
@@ -830,12 +834,12 @@ int main(int argc, char* argv[]) {
     
 
     myfloat *dSp, *dBigSp;
-    int Sp_size = B_num_cols * B_num_cols;
+    int Sp_size = B.numCols * B.numCols;
     CHECK_CUDA(cudaMalloc((void**)&dSp, Sp_size * sizeof(myfloat)));
     CHECK_CUDA(cudaMemset(dSp, 0, Sp_size * sizeof(myfloat)));
     // int ldsp = B_num_cols; // Leading dimension of D
     // buffer for holding the whole sequence
-    int bigSp_len = seq_len+5; // +5 to be safe
+    int bigSp_len = max_nlen+5; // +5 to be safe
     int bigSp_size = Sp_size * bigSp_len;
     CHECK_CUDA(cudaMalloc((void**)&dBigSp, bigSp_size * sizeof(myfloat)));
     CHECK_CUDA(cudaMemset(dBigSp, 0, bigSp_size * sizeof(myfloat)));
