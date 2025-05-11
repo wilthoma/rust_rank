@@ -9,26 +9,17 @@
 #include <stdexcept>
 #include <vector>
 
+const int DOT_CHUNK_SIZE = 64;
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \
     cudaError_t status = (func);                                               \
     if (status != cudaSuccess) {                                               \
         printf("CUDA API failed at line %d with error: %s (%d)\n",             \
-               __LINE__, cudaGetErrorString(status), status);                  \
-        return EXIT_FAILURE;                                                   \
+               __LINE__, cudaGetErrorString(status), status);                  \                                                \
+        throw std::runtime_error("CUDA error");                                \ 
     }                                                                          \
 }
-
-
-#define CUDA_CHECK(err)                                                                            \
-    do {                                                                                           \
-        cudaError_t err_ = (err);                                                                  \
-        if (err_ != cudaSuccess) {                                                                 \
-            std::printf("CUDA error %d at %s:%d\n", err_, __FILE__, __LINE__);                     \
-            throw std::runtime_error("CUDA error");                                                \
-        }                                                                                          \
-    } while (0)
 
 
 template<typename T>
@@ -60,10 +51,45 @@ __global__ void csr_spmm(
 }
 
 template<typename T>
-__global__ void modp_kernel(T *device_matrix, int matrix_size, T p) {
+__global__ void modp_kernel(T *device_matrix, int matrix_size, int offset, T p) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index < matrix_size) {
+        index += offset;
         device_matrix[index] = device_matrix[index] % p;
+    }
+}
+
+template<typename T>
+__global__ void dense_gemm_TN_chunked3D_offset(int n, int k,  // n = n_dense_vectors, k = n_veclen
+    const T* __restrict__ A,  // Transposed: A^T [n x k]
+    const T* __restrict__ B,  // B [k x n]
+    T* C,                    // Output: [n x n] slice of C at position offset
+    int offset, // offset in C, in units of myfloat
+    int chunk_size, T prime)
+{
+    int chunk = blockIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.z * blockDim.x + threadIdx.x;
+
+    // TODO : check it is the correct order (not <)
+    // we only need to compute half the matrix
+    // We waste a bit of buffer, though
+    if (row > col) {
+        return;
+    }
+
+    int chunk_start = chunk * chunk_size;
+    int chunk_end = min(chunk_start + chunk_size, k);
+
+    if (row < n && col < n) {
+        T acc = 0;
+        for (int i = chunk_start; i < chunk_end; ++i) {
+            acc += A[i * n + row] * B[i * n + col];  
+            // acc += A[i * n + row] * B[i + col * k];  // A is row-major transposed
+        }
+
+        // Accumulate the result into global memory (C[row + col * n])
+        atomicAdd(&C[row + col * n + offset], acc % prime);
     }
 }
 
@@ -103,9 +129,7 @@ struct CudaCsrMatrix {
     }
 
     // produces the product this * B and stores the result in C
-    void spmm(
-        const CudaDenseMatrix<T>& B,
-        CudaDenseMatrix<T>& C) {
+    void spmm(const CudaDenseMatrix<T>& B, CudaDenseMatrix<T>& C, T prime = 0) {
         // Check if the dimensions are compatible
         if (numCols != dense_matrix.numRows) {
             throw std::runtime_error("Matrix dimensions do not match for SpMM.");
@@ -117,10 +141,13 @@ struct CudaCsrMatrix {
         dim3 gridDim((numRows + blockDim.x - 1) / blockDim.x,
                     (B.numCols + blockDim.y - 1) / blockDim.y);
 
-        csr_spmm<<<gridDim, blockDim>>>(
+        CHECK_CUDA(csr_spmm<<<gridDim, blockDim>>>(
             numRows,B.numCols, d_rowOffsets, d_colIndices, d_values,
             B.d_data, C.d_data
-        );
+        ));
+        if (prime != 0) {
+            C.modp(prime);
+        }
     }
 
     
@@ -165,17 +192,31 @@ struct CudaDenseMatrix {
 
     void modp(T prime) {
         int size = numRows * numCols;
-        modp_kernel<<<((size + 255) / 256), 256>>>(d_data, size, prime);
+        CHECK_CUDA(modp_kernel<<<((size + 255) / 256), 256>>>(d_data, size, 0, prime));
     }
 
-    // computes the upper tringular part of this^T* B and stores the desult in dC, at position offset
-    void mTm_tri(const CudaDenseMatrix<T>& B, T* dC, int offset, T prime) {
+    // computes the upper tringular part of this^T* B and stores the desult in dC, at position position
+    void mTm_tri(const CudaDenseMatrix<T>& B, T* dC, int position, T prime) {
         // Check if the dimensions are compatible
-        if (numCols != B.numRows) {
+        if (numRows != B.numRows || numCols != B.numCols) {
             throw std::runtime_error("Matrix dimensions do not match for M^T * B.");
         }
+        int n_vec_len = numRows;
+        int n_dense_vectors = numCols;
+        int Sp_size = n_dense_vectors * n_dense_vectors;
 
-
+        int num_chunks = (n_veclen + DOT_CHUNK_SIZE - 1) / DOT_CHUNK_SIZE;
+        dim3 blockDim(16, 16);  // threads per block
+        dim3 gridDim(num_chunks,
+                     (n_dense_vectors + blockDim.y - 1) / blockDim.y,
+                     (n_dense_vectors + blockDim.x - 1) / blockDim.x);
+        
+        int offset = seq_position * Sp_size; // offset in units of myfloat
+        CHECK_CUDA(dense_gemm_TN_chunked3D_offset<<<gridDim, blockDim>>>(
+            n_dense_vectors, n_veclen, d_data, B.d_data, dC, offset, DOT_CHUNK_SIZE, prime
+        ));
+    
+        CHECK_CUDA(modp_kernel<T><<<((Sp_size + 255) / 256), 256>>>(dC, Sp_size, offset, prime));
 
     }
 

@@ -69,7 +69,7 @@
 
 
 const int THESMALLPRIME = 3323;
-const int DOT_CHUNK_SIZE = 64;
+
 
 
 #define USE_TIC 0 // turn on/off the timing
@@ -352,22 +352,22 @@ int compute_and_push_bigsp(myfloat* dM1, myfloat* dM2, myfloat* dBigSp, int n_de
         n_dense_vectors, n_veclen, dM1, dM2, dBigSp, offset, DOT_CHUNK_SIZE
     );
 
-        apply_function_kernel_offset<<<((Sp_size + 255) / 256), 256>>>(dBigSp, offset, Sp_size);
-        seq_position++;
+    apply_function_kernel_offset<<<((Sp_size + 255) / 256), 256>>>(dBigSp, offset, Sp_size);
+    seq_position++;
 
-        // Copy the device buffer dSp to a local host buffer
-        //CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    // Copy the device buffer dSp to a local host buffer
+    //CHECK_CUDA(cudaMemcpy(hSp.data(), dSp, Sp_size * sizeof(myfloat), cudaMemcpyDeviceToHost));
+
+    // print the first 10 entries of the result
+    // std::cout << "dSp (first 10 entries): ";
+    // for (int i = 0; i < 10 && i < Sp_size; ++i) {
+    //     std::cout << hSp[i] << " ";
+    // }
+    // std::cout << std::endl;
     
-        // print the first 10 entries of the result
-        // std::cout << "dSp (first 10 entries): ";
-        // for (int i = 0; i < 10 && i < Sp_size; ++i) {
-        //     std::cout << hSp[i] << " ";
-        // }
-        // std::cout << std::endl;
-        
-        //hSp_list.push_back(hSp);
+    //hSp_list.push_back(hSp);
 
-        return 0;
+    return 0;
 }
 
 
@@ -599,6 +599,29 @@ std::tuple<uint32_t, size_t, size_t, size_t> load_wdm_file_sym(
     return std::make_tuple(p, m, n, num_v);
 }
 
+void report_progress(
+    const long long elapsed,
+    long long& last_report,
+    int & last_nlen,
+    const int nlen,
+    const int max_nlen,
+    const int num_v,
+    const std::string& suffix = ""
+) {
+
+    double speed = static_cast<double>(nlen - last_nlen) / std::chrono::duration_cast<std::chrono::seconds>(elapsed_last).count();
+    double remaining = static_cast<double>(max_nlen - nlen) / speed;
+
+    std::cout << "\rProgress: " << nlen << "/" << max_nlen
+              << " | Elapsed: " << std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() << "s"
+              << " | Throughput: " << speed << "/s (total " << speed * num_v << "/s)"
+              << " | Remaining: " << std::chrono::duration_cast<std::chrono::seconds>(std::chrono::duration<double>(remaining)).count() << "s"
+              << " | " << suffix << "           " << std::flush;
+
+    last_nlen = nlen;
+    last_report = elapsed;
+}
+
 int main(int argc, char* argv[]) {
     CLI::App app{"Wiedemann sequence and rank computation"};
 
@@ -721,71 +744,79 @@ int main(int argc, char* argv[]) {
 
     // std::vector<myfloat> c_result(numRows * denseCols);
 
-    int   A_num_rows      = numRows;
-    int   A_num_cols      = numCols;
-    int   A_nnz           = nnz;
-    int   B_num_rows      = A_num_cols;
-    int   B_num_cols      = denseCols;
-    int   ldb             = B_num_rows;
-    int   ldc             = A_num_rows;
-    // int ldd = A_num_rows;
-    int   B_size          = ldb * B_num_cols;
-    int   C_size          = ldc * B_num_cols;
-    int* hA_csrOffsets = &csrOffsets[0];
-    // std::copy(csrOffsets.begin(), csrOffsets.end(), hA_csrOffsets);
-    int*   hA_columns    = &csrColumns[0]; 
-    myfloat* hA_values     = &csrValues[0]; 
-    myfloat* hB            = &h_dense[0];
-    myfloat* hC            = &c_dense[0]; 
-    myfloat* hC_result     = &c_result[0]; 
+    // int   A_num_rows      = numRows;
+    // int   A_num_cols      = numCols;
+    // int   A_nnz           = nnz;
+    // int   B_num_rows      = A_num_cols;
+    // int   B_num_cols      = denseCols;
+    // int   ldb             = B_num_rows;
+    // int   ldc             = A_num_rows;
+    // // int ldd = A_num_rows;
+    // int   B_size          = ldb * B_num_cols;
+    // int   C_size          = ldc * B_num_cols;
+    // int* hA_csrOffsets = &csrOffsets[0];
+    // // std::copy(csrOffsets.begin(), csrOffsets.end(), hA_csrOffsets);
+    // int*   hA_columns    = &csrColumns[0]; 
+    // myfloat* hA_values     = &csrValues[0]; 
+    // myfloat* hB            = &h_dense[0];
+    // myfloat* hC            = &c_dense[0]; 
+    // myfloat* hC_result     = &c_result[0]; 
 
 
 
     // std::cout<< "A";
     //--------------------------------------------------------------------------
     // Device memory management
-    int   *dA_csrOffsets, *dA_columns, *dA_csrOffsetsT, *dA_columnsT;
-    myfloat *dA_values, *dA_valuesT, *dB, *dC;
-    CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,(A_num_rows + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(myfloat))  )
-    CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsetsT,(A_num_cols + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dA_columnsT, A_nnz * sizeof(int))    )
-    CHECK_CUDA( cudaMalloc((void**) &dA_valuesT,  A_nnz * sizeof(myfloat))  )
-    CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(myfloat)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(myfloat)) )
-    // std::cout<< "B";
-    CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
-                           (A_num_rows + 1) * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(myfloat),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dA_csrOffsetsT, &csrOffsetsT[0],
-                            (A_num_cols + 1) * sizeof(int),
-                            cudaMemcpyHostToDevice) )
-     CHECK_CUDA( cudaMemcpy(dA_columnsT, &csrColumnsT[0], A_nnz * sizeof(int),
-                            cudaMemcpyHostToDevice) )
-     CHECK_CUDA( cudaMemcpy(dA_valuesT, &csrValuesT[0], A_nnz * sizeof(myfloat),
-                            cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(myfloat),
-                           cudaMemcpyHostToDevice) )
-    CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(myfloat),
-                           cudaMemcpyHostToDevice) )
+    // int   *dA_csrOffsets, *dA_columns, *dA_csrOffsetsT, *dA_columnsT;
+    // myfloat *dA_values, *dA_valuesT, *dB, *dC;
+    // CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsets,(A_num_rows + 1) * sizeof(int)) )
+    // CHECK_CUDA( cudaMalloc((void**) &dA_columns, A_nnz * sizeof(int))    )
+    // CHECK_CUDA( cudaMalloc((void**) &dA_values,  A_nnz * sizeof(myfloat))  )
+    // CHECK_CUDA( cudaMalloc((void**) &dA_csrOffsetsT,(A_num_cols + 1) * sizeof(int)) )
+    // CHECK_CUDA( cudaMalloc((void**) &dA_columnsT, A_nnz * sizeof(int))    )
+    // CHECK_CUDA( cudaMalloc((void**) &dA_valuesT,  A_nnz * sizeof(myfloat))  )
+    // CHECK_CUDA( cudaMalloc((void**) &dB,         B_size * sizeof(myfloat)) )
+    // CHECK_CUDA( cudaMalloc((void**) &dC,         C_size * sizeof(myfloat)) )
+    // // std::cout<< "B";
+    // CHECK_CUDA( cudaMemcpy(dA_csrOffsets, hA_csrOffsets,
+    //                        (A_num_rows + 1) * sizeof(int),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_columns, hA_columns, A_nnz * sizeof(int),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_values, hA_values, A_nnz * sizeof(myfloat),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dA_csrOffsetsT, &csrOffsetsT[0],
+    //                         (A_num_cols + 1) * sizeof(int),
+    //                         cudaMemcpyHostToDevice) )
+    //  CHECK_CUDA( cudaMemcpy(dA_columnsT, &csrColumnsT[0], A_nnz * sizeof(int),
+    //                         cudaMemcpyHostToDevice) )
+    //  CHECK_CUDA( cudaMemcpy(dA_valuesT, &csrValuesT[0], A_nnz * sizeof(myfloat),
+    //                         cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dB, hB, B_size * sizeof(myfloat),
+    //                        cudaMemcpyHostToDevice) )
+    // CHECK_CUDA( cudaMemcpy(dC, hC, C_size * sizeof(myfloat),
+    //                        cudaMemcpyHostToDevice) )
                         //    std::cout<< "B";
     //--------------------------------------------------------------------------
 
     // size_t               bufferSize3 = 0;
-    cudaEvent_t start, stop;
+
+
+    CudaCsrMatrix<myfloat> cuA = CudaCsrMatrix<myfloat>::from_host(A);
+    CudaCsrMatrix<myfloat> cuAT = CudaCsrMatrix<myfloat>::from_host(AT);
+    CudaDenseMatrix<myfloat> cuB = CudaDenseMatrix<myfloat>::from_host(h_dense, A.numCols, denseCols);
+    CudaDenseMatrix<myfloat> cuC = CudaDenseMatrix<myfloat>::allocate(A.numRows, denseCols);
+    CudaDenseMatrix<myfloat> cuD = CudaDenseMatrix<myfloat>::allocate(A.numCols, denseCols);
+
+    // cudaEvent_t start, stop;
 
 
     
     // Create dense matrix D for the result of the second multiplication
-    myfloat *dD;
-    int D_size = A_num_cols * B_num_cols;
-    CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
-    CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
+    // myfloat *dD;
+    // int D_size = A_num_cols * B_num_cols;
+    // CHECK_CUDA(cudaMalloc((void**)&dD, D_size * sizeof(myfloat)));
+    // CHECK_CUDA(cudaMemset(dD, 0, D_size * sizeof(myfloat)));
     // int ldd = A_num_cols; // Leading dimension of D
 
     
@@ -802,26 +833,54 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaMemset(dBigSp, 0, bigSp_size * sizeof(myfloat)));
     
     
-    CHECK_CUDA(cudaEventCreate(&start));
-    CHECK_CUDA(cudaEventCreate(&stop));
-    CHECK_CUDA(cudaEventRecord(start, 0));
+    // CHECK_CUDA(cudaEventCreate(&start));
+    // CHECK_CUDA(cudaEventCreate(&stop));
+    // CHECK_CUDA(cudaEventRecord(start, 0));
 
     
     int seq_position = 0; // the current write position into the output sequence buffer dBigSp
 
-    // compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);
-    compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
-    dim3 blockDim(16, 32);
-    dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
-                (B_num_cols + blockDim.y - 1) / blockDim.y);
-    dim3 blockDimT(16, 32);
-    dim3 gridDimT((A_num_cols + blockDimT.x - 1) / blockDimT.x,
-                (B_num_cols + blockDimT.y - 1) / blockDimT.y);
+    compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position);
+    // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
+    // dim3 blockDim(16, 32);
+    // dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
+    //             (B_num_cols + blockDim.y - 1) / blockDim.y);
+    // dim3 blockDimT(16, 32);
+    // dim3 gridDimT((A_num_cols + blockDimT.x - 1) / blockDimT.x,
+    //             (B_num_cols + blockDimT.y - 1) / blockDimT.y);
 
+    auto computationStart = std::chrono::high_resolution_clock::now();
+    long long lastSave = 0;
+    long long lastReport = 0;
+    long long reportInterval = 1000;
+    int last_nlen = 0;
+
+    
     for (int round=0;round<seq_len/4;round++){
-        if (round%10==0){
-            std::cout << "Round " << round << std::endl;
-        } 
+        auto now = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - computationStart).count();
+
+        if (elapsed-lastSave > save_after*1000) {
+            std::cout << "Saving data after " << elapsed/1000 << " s" << std::endl;
+            save_all_data(wdm_filename, numRows, numCols, denseCols, THESMALLPRIME, scale_factors_rows, scale_factors_cols, h_dense, dB, hBigSp);
+            lastSave = elapsed; // reset the timer
+        }
+        if (elapsed-lastReport > reportInterval) {
+            report_progress(
+                elapsed,
+                lastReport,
+                last_nlen,
+                seq_position,
+                max_nlen,
+                num_v
+            );
+        }
+
+
+
+        // if (round%10==0){
+        //     std::cout << "Round " << round << std::endl;
+        // } 
         // std::cout << "Round " << round << std::endl;
         // execute SpMM, multiply by A to get C
 
@@ -842,21 +901,20 @@ int main(int argc, char* argv[]) {
 
         // std::cout << "gridDim = ("<< gridDim.x<<"x"<< gridDim.y;
         // std::cout << ") blockDim = ("<< blockDim.x<<"x"<< blockDim.y<<")" << std::endl;
-        csr_spmm_2d<<<gridDim, blockDim>>>(
-            A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
-            dB, dC
-        );
+        // csr_spmm_2d<<<gridDim, blockDim>>>(
+        //     A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
+        //     dB, dC
+        // );
+        
+        A.spmm(cuB, cuC, THESMALLPRIME);
         // display_cuda_buffer(dC, C_size, 10);
-        cudaError_t err = cudaGetLastError();
-        if (err != cudaSuccess)
-            printf("CUDA Error: %s\n", cudaGetErrorString(err));
         toc("Handcrafted 2d...:");
         tic();
-        apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
-        toc("apply_function_kernel C");
+        // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
+        // toc("apply_function_kernel C");
         
         // Execute SpMM for the second multiplication (matA^T * matC -> matD)
-        tic();
+        // tic();
         // CHECK_CUSPARSE(cusparseSpMM(handle,
         //                             CUSPARSE_OPERATION_TRANSPOSE,
         //                             CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -867,21 +925,24 @@ int main(int argc, char* argv[]) {
         //                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
         //                                 &alpha, matAT, matC, &beta, matD, CUDA_FMT,
         //                                 CUSPARSE_TRANS_ALGO, dBuffer2));
-        csr_spmm_2d<<<gridDimT, blockDimT>>>(
-            A_num_cols, B_num_cols, dA_csrOffsetsT, dA_columnsT, dA_valuesT,
-            dC, dD
-        );
+        // csr_spmm_2d<<<gridDimT, blockDimT>>>(
+        //     A_num_cols, B_num_cols, dA_csrOffsetsT, dA_columnsT, dA_valuesT,
+        //     dC, dD
+        // );
+        AT.spmm(cuC, cuD, THESMALLPRIME);
         toc("SpMM A^T*C->D");
         // display_cuda_buffer(dD, D_size, 10);
-        tic();
-        apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
-        toc("apply_function_kernel D");
+        // tic();
+        // apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
+        // toc("apply_function_kernel D");
         
         tic();
         // compute_and_push_bigsp(dB, dD, dSp, B_num_cols, A_num_cols, seq_position);
         // compute_and_push_bigsp(dD, dD, dSp, B_num_cols, A_num_cols, seq_position);
-        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
-        compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
+        // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        // compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
+        compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position);
+        compute_and_push_bigsp2(cuD, cuD, dBigSp, seq_position);
         toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
@@ -890,11 +951,12 @@ int main(int argc, char* argv[]) {
         //                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
         //                                 &alpha, matA, matD, &beta, matC, CUDA_FMT,
         //                                 CUSPARSE_NORMAL_ALGO, dBuffer) )
-        csr_spmm_2d<<<gridDim, blockDim>>>(
-            A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
-            dD, dC
-        );
-        apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
+        // csr_spmm_2d<<<gridDim, blockDim>>>(
+        //     A_num_rows, B_num_cols, dA_csrOffsets, dA_columns, dA_values,
+        //     dD, dC
+        // );
+        // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
+        cuA.spmm(cuD, cuC, THESMALLPRIME);
         // and by A^T to get B
         // CHECK_CUSPARSE(cusparseSpMM(handle,
         //     CUSPARSE_OPERATION_TRANSPOSE,
@@ -906,64 +968,69 @@ int main(int argc, char* argv[]) {
         //         CUSPARSE_OPERATION_NON_TRANSPOSE,
         //         &alpha, matAT, matC, &beta, matB, CUDA_FMT,
         //         CUSPARSE_TRANS_ALGO, dBuffer2));
-        csr_spmm_2d<<<gridDimT, blockDimT>>>(
-            A_num_cols, B_num_cols, dA_csrOffsetsT, dA_columnsT, dA_valuesT,
-            dC, dB
-        );
-        apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
-        
+        // csr_spmm_2d<<<gridDimT, blockDimT>>>(
+        //     A_num_cols, B_num_cols, dA_csrOffsetsT, dA_columnsT, dA_valuesT,
+        //     dC, dB
+        // );
+        // apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
+        cuAT.spmm(cuC, cuB, THESMALLPRIME);
+
         // compute_and_push_bigsp(dB, dD, dBigSp, B_num_cols, A_num_cols, seq_position);
         // compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);                               
-        compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
-        compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
+        // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
+        // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
+        compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position);
+        compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position);  
         
     }
 
-    seq_position = hSp_list.size();
+    // seq_position = hSp_list.size();
 
     // extract the sequence from dBigSp
-    // std::cout << "Extracting the sequence from dBigSp" << std::endl;
-    // int effectivesize = seq_position * Sp_size;
-    // std::vector<myfloat> hBigSp(effectivesize);
-    // CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
-    // std::cout << "Done.";
+    std::cout << "Extracting the sequence from dBigSp" << std::endl;
+    int effectivesize = seq_position * Sp_size;
+    std::vector<myfloat> hBigSp(effectivesize);
+    CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    std::cout << "Done.";
     // std::cout << "hSp (first 10 entries): ";
     
 
     CHECK_CUDA(cudaDeviceSynchronize());
     // destroy matrix/vector descriptors
 
-    CHECK_CUDA(cudaEventRecord(stop, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop));
+    // CHECK_CUDA(cudaEventRecord(stop, 0));
+    // CHECK_CUDA(cudaEventSynchronize(stop));
 
-    float milliseconds = 0;
-    CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+    // float milliseconds = 0;
+    // CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+    auto computationStop = std::chrono::high_resolution_clock::now();
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(computationStop - computationStart).count();
     std::cout << "SpMM operation runtime: " << milliseconds << " ms" << std::endl;
     std::cout << "Total throughput: " << seq_position * B_num_cols * 1e3 / milliseconds  << "/s." << std::endl;
 
-    CHECK_CUDA(cudaEventDestroy(start));
-    CHECK_CUDA(cudaEventDestroy(stop));
+    // CHECK_CUDA(cudaEventDestroy(start));
+    // CHECK_CUDA(cudaEventDestroy(stop));
 
 
     // reduce mod p 
     // Call the kernel
-    auto modstart = std::chrono::high_resolution_clock::now();
-    int matrix_size = C_size;
-    apply_function_kernel<<<((matrix_size + 255) / 256), 256>>>(dC, matrix_size);
-    auto modstop = std::chrono::high_resolution_clock::now();
-    auto modMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(modstop - modstart).count();
-    std::cout << "Kernel execution runtime (mod): " << modMilliseconds << " ms" << std::endl;
+    // auto modstart = std::chrono::high_resolution_clock::now();
+    // int matrix_size = C_size;
+    // apply_function_kernel<<<((matrix_size + 255) / 256), 256>>>(dC, matrix_size);
+    // auto modstop = std::chrono::high_resolution_clock::now();
+    // auto modMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(modstop - modstart).count();
+    // std::cout << "Kernel execution runtime (mod): " << modMilliseconds << " ms" << std::endl;
 
     //--------------------------------------------------------------------------
     // device result check
-    auto copyStart = std::chrono::high_resolution_clock::now();
-    CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(myfloat),
-                           cudaMemcpyDeviceToHost) )
-    auto copyStop = std::chrono::high_resolution_clock::now();
-    auto copyMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(copyStop - copyStart).count();
-    std::cout << "Device to host copy runtime: " << copyMilliseconds << " ms" << std::endl;
+    // auto copyStart = std::chrono::high_resolution_clock::now();
+    // CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(myfloat),
+    //                        cudaMemcpyDeviceToHost) )
+    // auto copyStop = std::chrono::high_resolution_clock::now();
+    // auto copyMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(copyStop - copyStart).count();
+    // std::cout << "Device to host copy runtime: " << copyMilliseconds << " ms" << std::endl;
     
-    int correct = 1;
+    // int correct = 1;
 
     // check minimal polynomials 
     // for (int i = 0; i < B_num_cols; i++) {
@@ -976,37 +1043,37 @@ int main(int argc, char* argv[]) {
     //     }
     // }
 
-    // save_all_data(
-    //     outfile,
-    //     A_num_rows,
-    //     A_num_cols,
-    //     B_num_cols,
-    //     THESMALLPRIME,
-    //     scale_factors_rows,
-    //     scale_factors_cols,
-    //     h_dense,
-    //     dB,
-    //     hBigSp
-    //     //hSp_list
-    // );
+    save_all_data(
+        outfile,
+        A_num_rows,
+        A_num_cols,
+        B_num_cols,
+        THESMALLPRIME,
+        scale_factors_rows,
+        scale_factors_cols,
+        h_dense,
+        dB,
+        hBigSp
+        //hSp_list
+    );
 
-    int slen = hSp_list.size();
-    std::vector<myfloat> oneseq(slen,0);
-    for (int i = 0; i < 1; i++) {
-        for (int j = i; j < 1; j++) {
-            // collect the ij entries of hSp_list
-            for (int k = 0; k < slen; k++) {
-                oneseq[k] = hSp_list[k][i * B_num_cols + j];
-            }
-            std::cout << "oneseq: ";
-            display_vector(oneseq, 10);
-            // compute the minimal polynomial
-            std::vector<myfloat> coeffs = berlekamp_massey(oneseq, THESMALLPRIME);
-            std::cout << "Poly length: " << coeffs.size() << std::endl;
-            std::cout << "Poly coeffs: ";
-            display_vector(coeffs, 10);
-        }
-    }
+    // int slen = hSp_list.size();
+    // std::vector<myfloat> oneseq(slen,0);
+    // for (int i = 0; i < 1; i++) {
+    //     for (int j = i; j < 1; j++) {
+    //         // collect the ij entries of hSp_list
+    //         for (int k = 0; k < slen; k++) {
+    //             oneseq[k] = hSp_list[k][i * B_num_cols + j];
+    //         }
+    //         std::cout << "oneseq: ";
+    //         display_vector(oneseq, 10);
+    //         // compute the minimal polynomial
+    //         std::vector<myfloat> coeffs = berlekamp_massey(oneseq, THESMALLPRIME);
+    //         std::cout << "Poly length: " << coeffs.size() << std::endl;
+    //         std::cout << "Poly coeffs: ";
+    //         display_vector(coeffs, 10);
+    //     }
+    // }
     // for (int i = 0; i < A_num_rows; i++) {
     //     for (int j = 0; j < B_num_cols; j++) {
     //         if (hC[i + j * ldc] != hC_result[i + j * ldc]) {
@@ -1015,20 +1082,22 @@ int main(int argc, char* argv[]) {
     //         }
     //     }
     // }
-    if (correct)
-        printf("spmm_csr_example test PASSED\n");
-    else
-        printf("spmm_csr_example test FAILED: wrong result\n");
+    // if (correct)
+    //     printf("spmm_csr_example test PASSED\n");
+    // else
+    //     printf("spmm_csr_example test FAILED: wrong result\n");
     //--------------------------------------------------------------------------
     // device memory deallocation
-    CHECK_CUDA( cudaFree(dA_csrOffsets) )
-    CHECK_CUDA( cudaFree(dA_columns) )
-    CHECK_CUDA( cudaFree(dA_values) )
-    CHECK_CUDA( cudaFree(dB) )
-    CHECK_CUDA( cudaFree(dC) )
-    CHECK_CUDA(cudaFree(dD));
+
+    cuA.destroy();
+    cuAT.destroy();
+    cuB.destroy();
+    cuC.destroy();
+    cuD.destroy();
+    CHECK_CUDA(cudaFree(dBigSp));
     CHECK_CUDA(cudaFree(dSp));
-    return EXIT_SUCCESS;
+
+    return 0;
 }
 
 
