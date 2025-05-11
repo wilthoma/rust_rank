@@ -743,7 +743,7 @@ int main(int argc, char* argv[]) {
     //int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     int denseCols = num_v; 
     // std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
-    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols, prime);
+    std::vector<myfloat> h_dense = generate_random_vector(A.numCols * denseCols, prime);
     // std::vector<myfloat> h_dense(numCols * denseCols, 1);
 
 
@@ -834,7 +834,7 @@ int main(int argc, char* argv[]) {
     
 
     myfloat *dSp, *dBigSp;
-    int Sp_size = B.numCols * B.numCols;
+    int Sp_size = num_v * num_v;
     CHECK_CUDA(cudaMalloc((void**)&dSp, Sp_size * sizeof(myfloat)));
     CHECK_CUDA(cudaMemset(dSp, 0, Sp_size * sizeof(myfloat)));
     // int ldsp = B_num_cols; // Leading dimension of D
@@ -868,13 +868,13 @@ int main(int argc, char* argv[]) {
     int last_nlen = 0;
 
     
-    for (int round=0;round<seq_len/4;round++){
+    for (int round=0;round<max_nlen/4;round++){
         auto now = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - computationStart).count();
 
         if (elapsed-lastSave > save_after*1000) {
             std::cout << "Saving data after " << elapsed/1000 << " s" << std::endl;
-            save_all_data(wdm_filename, numRows, numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, hBigSp);
+            save_all_data(wdm_filename, A.numRows, A.numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, hBigSp);
             lastSave = elapsed; // reset the timer
         }
         if (elapsed-lastReport > reportInterval) {
@@ -1056,7 +1056,7 @@ int main(int argc, char* argv[]) {
     // }
 
     save_all_data(
-        outfile,
+        wdm_filename,
         A.numRows,
         A.numCols,
         B.numCols,
