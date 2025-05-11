@@ -370,6 +370,11 @@ int compute_and_push_bigsp(myfloat* dM1, myfloat* dM2, myfloat* dBigSp, int n_de
     return 0;
 }
 
+void compute_and_push_bigsp2(const CudaDenseMatrix<myfloat> &B, const CudaDenseMatrix<myfloat> &C, myfloat* dBigSp, int &seq_position, myfloat prime) {
+    B.mTm_tri(C, dBigSp, seq_position, prime);
+    seq_position++;
+}
+
 
 
 
@@ -633,7 +638,7 @@ int main(int argc, char* argv[]) {
     size_t max_nlen = 0;
     size_t save_after = 200;
     size_t num_v = 1;
-    uint32_t pprime = 0;
+    myfloat pprime = 0;
 
     app.add_option("filename", sms_filename, "The SMS file containing the sparse matrix")
         ->required();
@@ -653,13 +658,16 @@ int main(int argc, char* argv[]) {
     app.add_option("-v", num_v, "The number of vectors v. The output will consist of symmetric matrices of size v x v.")
         ->default_val(1);
 
-    app.add_option("-p,--prime", pprime, "The prime number to use for modular arithmetic");
+    app.add_option("-p,--prime", pprime, "The prime number to use for modular arithmetic")
+        ->default_val(THESMALLPRIME);
 
 
     CLI11_PARSE(app, argc, argv);
     if (wdm_filename.empty()) {
         wdm_filename = sms_filename + ".wdm";
     }
+
+    T prime = pprime;
 
     // load matrix from file
     // if (argc < 5) {
@@ -676,7 +684,7 @@ int main(int argc, char* argv[]) {
     // int numRows, numCols, nnz;
     //auto loadStart = std::chrono::high_resolution_clock::now();
     stic();
-    CooMatrix<myfloat> cooA = CooMatrix::load_from_file(sms_filename, THESMALLPRIME);
+    CooMatrix<myfloat> cooA = CooMatrix::load_from_file(sms_filename, prime);
     //load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
     ////auto loadStop = std::chrono::high_resolution_clock::now();
     auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
@@ -715,11 +723,11 @@ int main(int argc, char* argv[]) {
     }
 
     // Rescale the csr matrices
-    std::vector<myfloat> scale_factors_rows = generate_random_vector(numRows, THESMALLPRIME, true);
-    std::vector<myfloat> scale_factors_cols = generate_random_vector(numCols, THESMALLPRIME, true);
-    A.csr_rowrescale(scale_factors_rows, THESMALLPRIME);
-    A.csr_columnrescale(scale_factors_cols, THESMALLPRIME);
-    AT.csr_rowrescale(scale_factors_cols, THESMALLPRIME);
+    std::vector<myfloat> scale_factors_rows = generate_random_vector(numRows, prime, true);
+    std::vector<myfloat> scale_factors_cols = generate_random_vector(numCols, prime, true);
+    A.csr_rowrescale(scale_factors_rows, prime);
+    A.csr_columnrescale(scale_factors_cols, prime);
+    AT.csr_rowrescale(scale_factors_cols, prime);
 
     // A.csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
     // csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
@@ -731,7 +739,7 @@ int main(int argc, char* argv[]) {
     //int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     int denseCols = num_v; 
     // std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
-    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols, THESMALLPRIME);
+    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols, prime);
     // std::vector<myfloat> h_dense(numCols * denseCols, 1);
 
 
@@ -840,7 +848,7 @@ int main(int argc, char* argv[]) {
     
     int seq_position = 0; // the current write position into the output sequence buffer dBigSp
 
-    compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position);
+    compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime);
     // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
     // dim3 blockDim(16, 32);
     // dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
@@ -862,7 +870,7 @@ int main(int argc, char* argv[]) {
 
         if (elapsed-lastSave > save_after*1000) {
             std::cout << "Saving data after " << elapsed/1000 << " s" << std::endl;
-            save_all_data(wdm_filename, numRows, numCols, denseCols, THESMALLPRIME, scale_factors_rows, scale_factors_cols, h_dense, dB, hBigSp);
+            save_all_data(wdm_filename, numRows, numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, dB, hBigSp);
             lastSave = elapsed; // reset the timer
         }
         if (elapsed-lastReport > reportInterval) {
@@ -906,7 +914,7 @@ int main(int argc, char* argv[]) {
         //     dB, dC
         // );
         
-        A.spmm(cuB, cuC, THESMALLPRIME);
+        A.spmm(cuB, cuC, prime);
         // display_cuda_buffer(dC, C_size, 10);
         toc("Handcrafted 2d...:");
         tic();
@@ -929,7 +937,7 @@ int main(int argc, char* argv[]) {
         //     A_num_cols, B_num_cols, dA_csrOffsetsT, dA_columnsT, dA_valuesT,
         //     dC, dD
         // );
-        AT.spmm(cuC, cuD, THESMALLPRIME);
+        AT.spmm(cuC, cuD, prime);
         toc("SpMM A^T*C->D");
         // display_cuda_buffer(dD, D_size, 10);
         // tic();
@@ -941,8 +949,8 @@ int main(int argc, char* argv[]) {
         // compute_and_push_bigsp(dD, dD, dSp, B_num_cols, A_num_cols, seq_position);
         // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
         // compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
-        compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position);
-        compute_and_push_bigsp2(cuD, cuD, dBigSp, seq_position);
+        compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position, prime);
+        compute_and_push_bigsp2(cuD, cuD, dBigSp, seq_position, prime);
         toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
@@ -956,7 +964,7 @@ int main(int argc, char* argv[]) {
         //     dD, dC
         // );
         // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
-        cuA.spmm(cuD, cuC, THESMALLPRIME);
+        cuA.spmm(cuD, cuC, prime);
         // and by A^T to get B
         // CHECK_CUSPARSE(cusparseSpMM(handle,
         //     CUSPARSE_OPERATION_TRANSPOSE,
@@ -973,14 +981,14 @@ int main(int argc, char* argv[]) {
         //     dC, dB
         // );
         // apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
-        cuAT.spmm(cuC, cuB, THESMALLPRIME);
+        cuAT.spmm(cuC, cuB, prime);
 
         // compute_and_push_bigsp(dB, dD, dBigSp, B_num_cols, A_num_cols, seq_position);
         // compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);                               
         // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
         // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
-        compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position);
-        compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position);  
+        compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position, prime);
+        compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime);  
         
     }
 
@@ -1048,7 +1056,7 @@ int main(int argc, char* argv[]) {
         A_num_rows,
         A_num_cols,
         B_num_cols,
-        THESMALLPRIME,
+        prime,
         scale_factors_rows,
         scale_factors_cols,
         h_dense,
