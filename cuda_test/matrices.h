@@ -9,6 +9,9 @@
 
 
 template<typename T>
+struct CooMatrix;
+
+template<typename T>
 struct CsrMatrix {
     int numRows;
     int numCols;
@@ -111,7 +114,7 @@ struct CsrMatrix {
         }
     
         // Step 2: Compute row_ptr for transposed matrix
-        std::vector<int> tmprow_ptr_t(n_cols+1, 0);
+        std::vector<int> tmprow_ptr_t(numCols+1, 0);
         // row_ptr_t.resize(n_cols + 1, 0);
         for (int i = 0; i < n_cols; ++i) {
             tmprow_ptr_t[i + 1] = tmprow_ptr_t[i] + nnz_per_col[i];
@@ -125,7 +128,7 @@ struct CsrMatrix {
         std::vector<int> next_insert_pos = tmprow_ptr_t;
     
         // Step 4: Populate the transposed matrix
-        for (int row = 0; row < n_rows; ++row) {
+        for (int row = 0; row < numRows; ++row) {
             int start = rowOffsets[row];
             int end = rowOffsets[row + 1];
     
