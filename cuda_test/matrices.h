@@ -52,7 +52,7 @@ struct CsrMatrix {
         for (int row=0;row<numRows;row++) {
             int start = rowOffsets[row];
             int end = rowOffsets[row + 1];
-            myfloat scale = scale_factors[row];
+            T scale = scale_factors[row];
             for (int idx = start; idx < end; ++idx) {
                 values[idx] = (values[idx] * scale) % p;
             }
@@ -75,8 +75,8 @@ struct CsrMatrix {
                 return false;
             }
         }
-        for (int i = 0; i < csrValues.size(); ++i) {
-            if (csrColumns[i] < 0 || colIndices[i] >= numCols) {
+        for (int i = 0; i < values.size(); ++i) {
+            if (colIndices[i] < 0 || colIndices[i] >= numCols) {
                 std::cerr << "Invalid CSR columns: out of bounds." << std::endl;
                 return false;
             }
@@ -94,12 +94,12 @@ struct CsrMatrix {
         // const std::vector<myfloat>& values,
         // int n_rows,
         // int n_cols,
-        std::vector<int>& row_ptr_t;
-        std::vector<int>& col_indices_t;
-        std::vector<T>& values_t;
+        std::vector<int> row_ptr_t;
+        std::vector<int> col_indices_t;
+        std::vector<T> values_t;
     
         // Step 1: Count non-zero elements per column
-        std::vector<int> nnz_per_col(n_cols, 0);
+        std::vector<int> nnz_per_col(numCols, 0);
         int nnzc = colIndices.size();
         for (int i = 0; i < nnzc; ++i) {
             int col = colIndices[i];
@@ -131,7 +131,7 @@ struct CsrMatrix {
     
             for (int idx = start; idx < end; ++idx) {
                 int col = colIndices[idx];
-                myfloat val = values[idx];
+                T val = values[idx];
     
                 int insert_pos = next_insert_pos[col];
                 values_t[insert_pos] = val;
@@ -213,7 +213,7 @@ struct CooMatrix {
 
     
 
-    static CooMatrix<T> from_sms_file(const std::string& filename, T prime) {
+    public static CooMatrix<T> from_sms_file(const std::string& filename, T prime) {
         std::ifstream file(filename);  // Make sure to include <fstream>
         if (!file) {
             std::cerr << "Failed to open file: " << filename << std::endl;
