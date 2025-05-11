@@ -16,8 +16,8 @@ const int DOT_CHUNK_SIZE = 64;
     cudaError_t status = (func);                                               \
     if (status != cudaSuccess) {                                               \
         printf("CUDA API failed at line %d with error: %s (%d)\n",             \
-               __LINE__, cudaGetErrorString(status), status);                  \                                                \
-        throw std::runtime_error("CUDA error");                                \ 
+               __LINE__, cudaGetErrorString(status), status);                  \
+        throw std::runtime_error("CUDA error");                                \
     }                                                                          \
 }
 
@@ -141,10 +141,10 @@ struct CudaCsrMatrix {
         dim3 gridDim((numRows + blockDim.x - 1) / blockDim.x,
                     (B.numCols + blockDim.y - 1) / blockDim.y);
 
-        CHECK_CUDA(csr_spmm<<<gridDim, blockDim>>>(
+        //CHECK_CUDA(
+            csr_spmm<<<gridDim, blockDim>>>(
             numRows,B.numCols, d_rowOffsets, d_colIndices, d_values,
-            B.d_data, C.d_data
-        ));
+            B.d_data, C.d_data);//);
         if (prime != 0) {
             C.modp(prime);
         }
@@ -212,11 +212,14 @@ struct CudaDenseMatrix {
                      (n_dense_vectors + blockDim.x - 1) / blockDim.x);
         
         int offset = seq_position * Sp_size; // offset in units of myfloat
-        CHECK_CUDA(dense_gemm_TN_chunked3D_offset<<<gridDim, blockDim>>>(
-            n_dense_vectors, n_veclen, d_data, B.d_data, dC, offset, DOT_CHUNK_SIZE, prime
-        ));
+        //CHECK_CUDA(
+            dense_gemm_TN_chunked3D_offset<<<gridDim, blockDim>>>(
+            n_dense_vectors, n_veclen, d_data, B.d_data, dC, offset, DOT_CHUNK_SIZE, prime);
+        //);
     
-        CHECK_CUDA(modp_kernel<T><<<((Sp_size + 255) / 256), 256>>>(dC, Sp_size, offset, prime));
+        //CHECK_CUDA(
+            modp_kernel<T><<<((Sp_size + 255) / 256), 256>>>(dC, Sp_size, offset, prime);
+        //);
 
     }
 
