@@ -205,7 +205,7 @@ struct CudaDenseMatrix {
         if (numRows != B.numRows || numCols != B.numCols) {
             throw std::runtime_error("Matrix dimensions do not match for M^T * B.");
         }
-        int n_vec_len = numRows;
+        int n_veclen = numRows;
         int n_dense_vectors = numCols;
         int Sp_size = n_dense_vectors * n_dense_vectors;
 
