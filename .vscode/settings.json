@@ -74,6 +74,8 @@
         "iterator": "cpp",
         "utility": "cpp",
         "__verbose_abort": "cpp",
-        "execution": "cpp"
+        "execution": "cpp",
+        "__tree": "cpp",
+        "memory_resource": "cpp"
     }
 }

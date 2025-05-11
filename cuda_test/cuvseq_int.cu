@@ -687,7 +687,7 @@ int main(int argc, char* argv[]) {
     CooMatrix<myfloat> cooA = CooMatrix::load_from_file(sms_filename, prime);
     //load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
     ////auto loadStop = std::chrono::high_resolution_clock::now();
-    auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
+    // auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
     std::cout << "Matrix loading runtime: " << stoc() << " ms" << std::endl;
 
     //auto convertStart = std::chrono::high_resolution_clock::now();
@@ -698,7 +698,7 @@ int main(int argc, char* argv[]) {
     //auto convertMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(convertStop - convertStart).count();
     std::cout << "COO to CSR conversion runtime: " << stoc() << " ms" << std::endl;
 
-    std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
+    std::cout << A.numRows <<"x" << A.numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
     if (A.is_csr_valid()) {
         std::cout << "CSR matrix is valid." << std::endl;
@@ -715,7 +715,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Transposed matrix nnz: " << AT.values.size() << std::endl;
 
 
-    if (is_csr_valid(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT)) {
+    if (AT.is_csr_valid()) {
         std::cout << "Transposed CSR matrix is valid." << std::endl;
     } else {
         std::cerr << "Transposed CSR matrix is invalid." << std::endl;
@@ -870,7 +870,7 @@ int main(int argc, char* argv[]) {
 
         if (elapsed-lastSave > save_after*1000) {
             std::cout << "Saving data after " << elapsed/1000 << " s" << std::endl;
-            save_all_data(wdm_filename, numRows, numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, dB, hBigSp);
+            save_all_data(wdm_filename, numRows, numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, hBigSp);
             lastSave = elapsed; // reset the timer
         }
         if (elapsed-lastReport > reportInterval) {
@@ -914,7 +914,7 @@ int main(int argc, char* argv[]) {
         //     dB, dC
         // );
         
-        A.spmm(cuB, cuC, prime);
+        cuA.spmm(cuB, cuC, prime);
         // display_cuda_buffer(dC, C_size, 10);
         toc("Handcrafted 2d...:");
         tic();
@@ -937,7 +937,7 @@ int main(int argc, char* argv[]) {
         //     A_num_cols, B_num_cols, dA_csrOffsetsT, dA_columnsT, dA_valuesT,
         //     dC, dD
         // );
-        AT.spmm(cuC, cuD, prime);
+        cuAT.spmm(cuC, cuD, prime);
         toc("SpMM A^T*C->D");
         // display_cuda_buffer(dD, D_size, 10);
         // tic();
@@ -1053,14 +1053,14 @@ int main(int argc, char* argv[]) {
 
     save_all_data(
         outfile,
-        A_num_rows,
-        A_num_cols,
-        B_num_cols,
+        A.numRows,
+        A.numCols,
+        B.numCols,
         prime,
         scale_factors_rows,
         scale_factors_cols,
         h_dense,
-        dB,
+        cuB.d_data,
         hBigSp
         //hSp_list
     );
@@ -1097,11 +1097,11 @@ int main(int argc, char* argv[]) {
     //--------------------------------------------------------------------------
     // device memory deallocation
 
-    cuA.destroy();
-    cuAT.destroy();
-    cuB.destroy();
-    cuC.destroy();
-    cuD.destroy();
+    cuA.release();
+    cuAT.release();
+    cuB.release();
+    cuC.release();
+    cuD.release();
     CHECK_CUDA(cudaFree(dBigSp));
     CHECK_CUDA(cudaFree(dSp));
 
