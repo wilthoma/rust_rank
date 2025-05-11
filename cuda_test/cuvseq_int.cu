@@ -874,7 +874,7 @@ int main(int argc, char* argv[]) {
 
         if (elapsed-lastSave > save_after*1000) {
             std::cout << "Saving data after " << elapsed/1000 << " s" << std::endl;
-            save_all_data(wdm_filename, A.numRows, A.numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, hBigSp);
+           //TODOOO  save_all_data(wdm_filename, A.numRows, A.numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, hBigSp);
             lastSave = elapsed; // reset the timer
         }
         if (elapsed-lastReport > reportInterval) {
@@ -1018,7 +1018,7 @@ int main(int argc, char* argv[]) {
     auto computationStop = std::chrono::high_resolution_clock::now();
     auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(computationStop - computationStart).count();
     std::cout << "SpMM operation runtime: " << milliseconds << " ms" << std::endl;
-    std::cout << "Total throughput: " << seq_position * B_num_cols * 1e3 / milliseconds  << "/s." << std::endl;
+    std::cout << "Total throughput: " << seq_position * num_v * 1e3 / milliseconds  << "/s." << std::endl;
 
     // CHECK_CUDA(cudaEventDestroy(start));
     // CHECK_CUDA(cudaEventDestroy(stop));
@@ -1059,7 +1059,7 @@ int main(int argc, char* argv[]) {
         wdm_filename,
         A.numRows,
         A.numCols,
-        B.numCols,
+        num_v,
         prime,
         scale_factors_rows,
         scale_factors_cols,
