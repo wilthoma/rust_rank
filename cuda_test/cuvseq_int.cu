@@ -64,59 +64,17 @@
 #include <sstream>
 #include <iomanip>
 #include "include/CLI11.hpp"
+#include "matrices.h"
+#include "cuda_helpers.h"
 
-#define CHECK_CUDA(func)                                                       \
-{                                                                              \
-    cudaError_t status = (func);                                               \
-    if (status != cudaSuccess) {                                               \
-        printf("CUDA API failed at line %d with error: %s (%d)\n",             \
-               __LINE__, cudaGetErrorString(status), status);                  \
-        return EXIT_FAILURE;                                                   \
-    }                                                                          \
-}
-
-#define CHECK_CUSPARSE(func)                                                   \
-{                                                                              \
-    cusparseStatus_t status = (func);                                          \
-    if (status != CUSPARSE_STATUS_SUCCESS) {                                   \
-        printf("CUSPARSE API failed at line %d with error: %s (%d)\n",         \
-               __LINE__, cusparseGetErrorString(status), status);              \
-        return EXIT_FAILURE;                                                   \
-    }                                                                          \
-}
-
-// cublas API error checking
-#define CUBLAS_CHECK(err)                                                                          \
-    do {                                                                                           \
-        cublasStatus_t err_ = (err);                                                               \
-        if (err_ != CUBLAS_STATUS_SUCCESS) {                                                       \
-            std::printf("cublas error %d at %s:%d\n", err_, __FILE__, __LINE__);                   \
-            throw std::runtime_error("cublas error");                                              \
-        }                                                                                          \
-    } while (0)
-
-#define CUDA_CHECK(err)                                                                            \
-    do {                                                                                           \
-        cudaError_t err_ = (err);                                                                  \
-        if (err_ != cudaSuccess) {                                                                 \
-            std::printf("CUDA error %d at %s:%d\n", err_, __FILE__, __LINE__);                     \
-            throw std::runtime_error("CUDA error");                                                \
-        }                                                                                          \
-    } while (0)
 
 const int THESMALLPRIME = 3323;
 const int DOT_CHUNK_SIZE = 64;
 
 
-#define USE_TIC 0
+#define USE_TIC 0 // turn on/off the timing
 
-#define USE_DOUBLE 0
-#if USE_DOUBLE
-    typedef double myfloat;
-    #define CUDA_FMT CUDA_R_64F
-#else
-    typedef int32_t myfloat;
-#endif
+typedef int32_t myfloat;
 
 
 using namespace std;
@@ -162,94 +120,7 @@ vector<myfloat> berlekamp_massey(const vector<myfloat>& s, myfloat mod) {
 }
 
 
-void load_sms_matrix(const std::string& filename, std::vector<int>& rowIndices, std::vector<int>& colIndices, std::vector<myfloat>& values, int& numRows, int& numCols, int& nnz) {
-    std::ifstream file(filename);  // Make sure to include <fstream>
-    if (!file) {
-        std::cerr << "Failed to open file: " << filename << std::endl;
-        exit(-1);
-    }
 
-    char arbitraryChar;
-    file >> numRows >> numCols >> arbitraryChar;
-
-    std::vector<int> tempRowIndices;
-    std::vector<int> tempColIndices;
-    std::vector<myfloat> tempValues;
-
-    int row, col;
-    myfloat value;
-    while (file >> row >> col >> value) {
-        if (row>0 && col>0) {
-            tempRowIndices.push_back(row-1);
-            tempColIndices.push_back(col-1);
-            tempValues.push_back(value);
-        }
-    }
-
-    nnz = tempRowIndices.size();
-    rowIndices = std::move(tempRowIndices);
-    colIndices = std::move(tempColIndices);
-    values = std::move(tempValues);
-
-    file.close();
-}
-
-void coo_matrix_to_csr(int numRows, const std::vector<int>& rowIndices, const std::vector<int>& colIndices, const std::vector<myfloat>& values,
-                       std::vector<int>& csrOffsets, std::vector<int>& csrColumns, std::vector<myfloat>& csrValues) {
-    csrOffsets.resize(numRows + 1, 0);
-    csrColumns.resize(values.size());
-    csrValues.resize(values.size());
-
-    std::vector<int> rowCount(numRows, 0);
-    for (int i = 0; i < rowIndices.size(); ++i) {
-        rowCount[rowIndices[i]]++;
-    }
-
-    csrOffsets[0] = 0;
-    for (int i = 1; i <= numRows; ++i) {
-        csrOffsets[i] = csrOffsets[i - 1] + rowCount[i - 1];
-    }
-
-    csrColumns = colIndices;
-    csrValues = values;
-    
-    // std::vector<int> tempOffsets = csrOffsets;
-    // for (int i = 0; i < rowIndices.size(); ++i) {
-    //     int row = rowIndices[i];
-    //     int destIndex = tempOffsets[row]++;
-    //     csrColumns[destIndex] = colIndices[i];
-    //     csrValues[destIndex] = values[i];
-    // }
-}
-
-bool is_csr_valid(int numRows, int numCols, const std::vector<int>& csrOffsets, const std::vector<int>& csrColumns, const std::vector<myfloat>& csrValues) {
-    // Check if the CSR format is valid
-    if (csrOffsets.size() != numRows + 1) {
-        std::cerr << "Invalid CSR offsets size." << std::endl;
-        return false;
-    }
-    if (csrOffsets[0] != 0) {
-        std::cerr << "Invalid CSR offsets: first element should be 0." << std::endl;
-        return false;
-    }
-    for (int i = 1; i <= numRows; ++i) {
-        if (csrOffsets[i] < csrOffsets[i - 1]) {
-            std::cerr << "Invalid CSR offsets: non-decreasing property violated." << std::endl;
-            return false;
-        }
-    }
-    for (int i = 0; i < csrValues.size(); ++i) {
-        if (csrColumns[i] < 0 || csrColumns[i] >= numCols) {
-            std::cerr << "Invalid CSR columns: out of bounds." << std::endl;
-            return false;
-        }
-    }
-    if (csrValues.size() != csrColumns.size()) {
-        std::cerr << "Invalid CSR values: size mismatch." << std::endl;
-        return false;
-    }
-    return true;
-}
 
 // Define your function here (e.g., increment each element)
 __device__ myfloat my_function(myfloat input) {
@@ -297,60 +168,22 @@ inline void toc(const std::string& msg = "") {
     #endif
 }
 
-void transpose_csr_matrix(
-    const std::vector<int>& row_ptr,
-    const std::vector<int>& col_indices,
-    const std::vector<myfloat>& values,
-    int n_rows,
-    int n_cols,
-    std::vector<int>& row_ptr_t,
-    std::vector<int>& col_indices_t,
-    std::vector<myfloat>& values_t) {
-
-    // Step 1: Count non-zero elements per column
-    std::vector<int> nnz_per_col(n_cols, 0);
-    int nnzc = col_indices.size();
-    for (int i = 0; i < nnzc; ++i) {
-        int col = col_indices[i];
-        if (col <0 || col >= n_cols) {
-            std::cerr << "Error: Column index out of bounds." <<col<< " vs " <<i << " vs "<< n_cols  << std::endl;
-            exit(-1);
-        }
-        nnz_per_col[col]++;
-    }
-
-    // Step 2: Compute row_ptr for transposed matrix
-    std::vector<int> tmprow_ptr_t(n_cols+1, 0);
-    // row_ptr_t.resize(n_cols + 1, 0);
-    for (int i = 0; i < n_cols; ++i) {
-        tmprow_ptr_t[i + 1] = tmprow_ptr_t[i] + nnz_per_col[i];
-    }
-
-    // Step 3: Prepare space for transposed values and indices
-    int nnz = values.size();
-    values_t.resize(nnz,0);
-    col_indices_t.resize(nnz,0);
-
-    std::vector<int> next_insert_pos = tmprow_ptr_t;
-
-    // Step 4: Populate the transposed matrix
-    for (int row = 0; row < n_rows; ++row) {
-        int start = row_ptr[row];
-        int end = row_ptr[row + 1];
-
-        for (int idx = start; idx < end; ++idx) {
-            int col = col_indices[idx];
-            myfloat val = values[idx];
-
-            int insert_pos = next_insert_pos[col];
-            values_t[insert_pos] = val;
-            col_indices_t[insert_pos] = row;
-            next_insert_pos[col]++;
-        }
-    }
-
-    row_ptr_t = std::move(tmprow_ptr_t);
+// silent versions without cuda synchronize
+auto stic_start_time= std::chrono::high_resolution_clock::now();
+inline void stic() 
+{
+    // Start the timer
+    stic_start_time = std::chrono::high_resolution_clock::now();
 }
+inline long long stoc() 
+{
+    // Stop the timer
+    auto end_time = std::chrono::high_resolution_clock::now();
+    // Calculate the elapsed time in milliseconds
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - stic_start_time).count();
+    return elapsed_time;
+}
+
 
 
 __global__ void csr_spmm_naive(
@@ -538,70 +371,9 @@ int compute_and_push_bigsp(myfloat* dM1, myfloat* dM2, myfloat* dBigSp, int n_de
 }
 
 
-std::vector<myfloat> generate_random_vector(int size, bool only_nonzero=false) {
-    std::vector<myfloat> random_vector(size);
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<myfloat> dis(only_nonzero? 1 : 0, THESMALLPRIME - 1);
 
-    for (int i = 0; i < size; ++i) {
-        random_vector[i] = dis(gen);
-    }
 
-    return random_vector;
-}
 
-void csr_columnrescale(
-    int numRows,
-    int numCols,
-    const std::vector<int>& csrOffsets,
-    const std::vector<int>& csrColumns,
-    std::vector<myfloat>& csrValues,
-    const std::vector<myfloat>& scale_factors,
-    myfloat p) 
-{
-    if (scale_factors.size() != numCols) {
-        std::cerr << "Error: scale_factors size does not match number of columns." << std::endl;
-        return;
-    }
-    int nnz = csrValues.size();
-    for (int i=0;i<nnz;i++) {
-        csrValues[i] = (csrValues[i] * scale_factors[csrColumns[i]]) % p;
-    }
-}
-void csr_rowrescale(
-    int numRows,
-    int numCols,
-    const std::vector<int>& csrOffsets,
-    const std::vector<int>& csrColumns,
-    std::vector<myfloat>& csrValues,
-    const std::vector<myfloat>& scale_factors,
-    myfloat p) 
-{
-    if (scale_factors.size() != numRows) {
-        std::cerr << "Error: scale_factors size does not match number of rows." << std::endl;
-        return;
-    }
-    for (int row=0;row<numRows;row++) {
-        int start = csrOffsets[row];
-        int end = csrOffsets[row + 1];
-        myfloat scale = scale_factors[row];
-        for (int idx = start; idx < end; ++idx) {
-            csrValues[idx] = (csrValues[idx] * scale) % p;
-        }
-    }
-}
-
-struct CsrMatrix {
-    int numRows;
-    int numCols;
-    std::vector<int> rowOffsets;
-    std::vector<int> colIndices;
-    std::vector<myfloat> values;
-
-    CsrMatrix(int rows, int cols, const std::vector<int>& offsets, const std::vector<int>& indices, const std::vector<myfloat>& vals)
-        : numRows(rows), numCols(cols), rowOffsets(offsets), colIndices(indices), values(vals) {}
-};
 
 // void test_singlemat_product(CsrMatrix &matA, myfloat *dB)
 // {
@@ -611,13 +383,7 @@ struct CsrMatrix {
 
 // }
 
-void display_vector(const std::vector<myfloat>& vec, int max_elements = 10) {
-    std::cout << "Vector: ";
-    for (int i = 0; i < std::min(max_elements, (int)vec.size()); ++i) {
-        std::cout << (vec[i]>=0?vec[i]:vec[i]+THESMALLPRIME) << " ";
-    }
-    std::cout << std::endl;
-}
+
 
 void display_cuda_buffer(myfloat* d_buffer, int size, int max_elements = 10) {
     std::vector<myfloat> h_buffer(size);
@@ -625,31 +391,6 @@ void display_cuda_buffer(myfloat* d_buffer, int size, int max_elements = 10) {
     display_vector(h_buffer, max_elements);
 }
 
-std::vector<std::vector<myfloat>> reshape_to_vector_of_vectors(const std::vector<myfloat>& input, int N) {
-    if (input.size() % N != 0) {
-        throw std::invalid_argument("Input size is not divisible by N");
-    }
-
-    int num_vectors = input.size() / N;
-    std::vector<std::vector<myfloat>> result(num_vectors, std::vector<myfloat>(N));
-
-    for (int i = 0; i < num_vectors; ++i) {
-        for (int j = 0; j < N; ++j) {
-            result[i][j] = input[j * num_vectors + i];
-        }
-    }
-
-    return result;
-}
-
-template <typename T>
-std::vector<T> prettify_vect(const std::vector<T>& vec, T theprime) {
-    std::vector<T> result(vec.size());
-    for (size_t i = 0; i < vec.size(); ++i) {
-        result[i] = (vec[i] % theprime + theprime) % theprime;
-    }
-    return result;
-}
 
 template <typename T>
 void save_wdm_file_sym(
@@ -861,7 +602,7 @@ std::tuple<uint32_t, size_t, size_t, size_t> load_wdm_file_sym(
 int main(int argc, char* argv[]) {
     CLI::App app{"Wiedemann sequence and rank computation"};
 
-    std::string filename;
+    std::string sms_filename, wdm_filename;
     bool overwrite = false;
     bool benchmark = false;
     bool transpose_matrix = false;
@@ -871,9 +612,10 @@ int main(int argc, char* argv[]) {
     size_t num_v = 1;
     uint32_t pprime = 0;
 
-    app.add_option("filename", filename, "The SMS file containing the sparse matrix")
+    app.add_option("filename", sms_filename, "The SMS file containing the sparse matrix")
         ->required();
-
+    app.add_option("-f", wdm_filename, "The WDM file for saving the result. If existing, progress will be loaded from there, unless -o is specified.")
+        ->default_val("");
     app.add_flag("-o,--overwrite", overwrite, "Overwrite existing files");
 
     app.add_flag("--benchmark", benchmark, "Run matrix vector multiply benchmark, but no other computation.");
@@ -892,42 +634,54 @@ int main(int argc, char* argv[]) {
 
 
     CLI11_PARSE(app, argc, argv);
+    if (wdm_filename.empty()) {
+        wdm_filename = sms_filename + ".wdm";
+    }
 
     // load matrix from file
-    if (argc < 5) {
-        std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns> <sequence length> <outfile>" << std::endl;
-        return -1;
-    }
-    char* outfile = argv[4];
-    int seq_len = atoi(argv[3]);
-    std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns, csrColumnsT, csrOffsetsT;
-    std::vector<myfloat> values, csrValues, csrValuesT;
-    int numRows, numCols, nnz;
-    auto loadStart = std::chrono::high_resolution_clock::now();
-    load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
-    auto loadStop = std::chrono::high_resolution_clock::now();
-    auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
-    std::cout << "Matrix loading runtime: " << loadMilliseconds << " ms" << std::endl;
+    // if (argc < 5) {
+    //     std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns> <sequence length> <outfile>" << std::endl;
+    //     return -1;
+    // }
+    //char* outfile = argv[4];
+    //int seq_len = atoi(argv[3]);
 
-    auto convertStart = std::chrono::high_resolution_clock::now();
-    coo_matrix_to_csr(numRows, rowIndices, colIndices, values, csrOffsets, csrColumns, csrValues);
-    auto convertStop = std::chrono::high_resolution_clock::now();
-    auto convertMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(convertStop - convertStart).count();
-    std::cout << "COO to CSR conversion runtime: " << convertMilliseconds << " ms" << std::endl;
+
+
+    // std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns, csrColumnsT, csrOffsetsT;
+    // std::vector<myfloat> values, csrValues, csrValuesT;
+    // int numRows, numCols, nnz;
+    //auto loadStart = std::chrono::high_resolution_clock::now();
+    stic();
+    CooMatrix<myfloat> cooA = CooMatrix::load_from_file(sms_filename, THESMALLPRIME);
+    //load_sms_matrix(argv[1], rowIndices, colIndices, values, numRows, numCols, nnz);
+    ////auto loadStop = std::chrono::high_resolution_clock::now();
+    auto loadMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(loadStop - loadStart).count();
+    std::cout << "Matrix loading runtime: " << stoc() << " ms" << std::endl;
+
+    //auto convertStart = std::chrono::high_resolution_clock::now();
+    stic();
+    //coo_matrix_to_csr(numRows, rowIndices, colIndices, values, csrOffsets, csrColumns, csrValues);
+    CsrMatrix<myfloat> A = cooA.to_csr();
+    //auto convertStop = std::chrono::high_resolution_clock::now();
+    //auto convertMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(convertStop - convertStart).count();
+    std::cout << "COO to CSR conversion runtime: " << stoc() << " ms" << std::endl;
 
     std::cout << numRows <<"x" << numCols << " matrix loaded from file: " << argv[1] << " with nnz=" << nnz << std::endl;
 
-    if (is_csr_valid(numRows, numCols, csrOffsets, csrColumns, csrValues)) {
+    if (A.is_csr_valid()) {
         std::cout << "CSR matrix is valid." << std::endl;
     } else {
         std::cerr << "CSR matrix is invalid." << std::endl;
         return -1;
     }
 
-    transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
+    CsrMatrix<myfloat> AT = A.transpose();
+
+    // transpose_csr_matrix(csrOffsets, csrColumns, csrValues, numRows, numCols, csrOffsetsT, csrColumnsT, csrValuesT);
     std::cout << "CSR matrix transposed." << std::endl;
-    std::cout << "Transposed matrix size: " << numCols << "x" << numRows << std::endl;
-    std::cout << "Transposed matrix nnz: " << csrValuesT.size() << std::endl;
+    std::cout << "Transposed matrix size: " << AT.numRows << "x" << AT.numCols << std::endl;
+    std::cout << "Transposed matrix nnz: " << AT.values.size() << std::endl;
 
 
     if (is_csr_valid(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT)) {
@@ -938,29 +692,34 @@ int main(int argc, char* argv[]) {
     }
 
     // Rescale the csr matrices
-    std::vector<myfloat> scale_factors_rows = generate_random_vector(numRows, true);
-    std::vector<myfloat> scale_factors_cols = generate_random_vector(numCols, true);
-    csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
-    csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
-    csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
+    std::vector<myfloat> scale_factors_rows = generate_random_vector(numRows, THESMALLPRIME, true);
+    std::vector<myfloat> scale_factors_cols = generate_random_vector(numCols, THESMALLPRIME, true);
+    A.csr_rowrescale(scale_factors_rows, THESMALLPRIME);
+    A.csr_columnrescale(scale_factors_cols, THESMALLPRIME);
+    AT.csr_rowrescale(scale_factors_cols, THESMALLPRIME);
+
+    // A.csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
+    // csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
+    // csr_rowrescale(numCols, numRows, csrOffsetsT, csrColumnsT, csrValuesT, scale_factors_cols, THESMALLPRIME);
 
     // std::cout<< "A";
 
     // Random dense matrix for multiplication
-    int denseCols = atoi(argv[2]);  // Example: Result matrix column size
+    //int denseCols = atoi(argv[2]);  // Example: Result matrix column size
+    int denseCols = num_v; 
     // std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
-    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols);
+    std::vector<myfloat> h_dense = generate_random_vector(numCols * denseCols, THESMALLPRIME);
     // std::vector<myfloat> h_dense(numCols * denseCols, 1);
 
 
-    std::vector<myfloat> c_dense(numRows * denseCols, 0);
+    //std::vector<myfloat> c_dense(numRows * denseCols, 0);
     // for (int i = 0; i < numRows * denseCols; ++i) {
     //     c_dense[i] = 0; //static_cast<myfloat>(rand()) / RAND_MAX;  // Random initialization
     // }
 
     // std::cout<< "A";
 
-    std::vector<myfloat> c_result(numRows * denseCols);
+    // std::vector<myfloat> c_result(numRows * denseCols);
 
     int   A_num_rows      = numRows;
     int   A_num_cols      = numCols;
