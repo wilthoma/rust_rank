@@ -827,7 +827,8 @@ int main(int argc, char* argv[]) {
 
     std::cout<< "cuB: ";
     cuB.display(prime, 10);
-    cuA.display(prime, 10);
+    std::cout<< "cuA: ";
+    cuA.display(prime, 20);
     
     for (int round=0;round<max_nlen/4;round++){
         auto now = std::chrono::high_resolution_clock::now();
