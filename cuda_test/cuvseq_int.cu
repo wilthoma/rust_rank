@@ -395,7 +395,7 @@ void display_cuda_buffer(myfloat* d_buffer, int size, int max_elements = 10) {
     display_vector(h_buffer, max_elements);
 }
 
-int save_all_data(
+std::vector<myfloat> save_all_data(
     const std::string& filename,
     int n_rows,
     int n_cols,
@@ -457,7 +457,7 @@ int save_all_data(
     );
     std::cout << "Data saved to " << filename << std::endl;
 
-    return 0;
+    return sp_list_upper[0];
 }
 
 
@@ -491,6 +491,7 @@ int main(int argc, char* argv[]) {
     std::string sms_filename, wdm_filename;
     bool overwrite = false;
     bool benchmark = false;
+    bool run_berle = false;
     bool transpose_matrix = false;
 
     size_t max_nlen = 0;
@@ -503,6 +504,7 @@ int main(int argc, char* argv[]) {
     app.add_option("-f", wdm_filename, "The WDM file for saving the result. If existing, progress will be loaded from there, unless -o is specified.")
         ->default_val("");
     app.add_flag("-o,--overwrite", overwrite, "Overwrite existing files");
+    app.add_flag("--berle", run_berle, "Run Berlekamp-Massey algorithm on the first sequence (for testing, only produces e correct generator if sequence long enough).");
 
     app.add_flag("--benchmark", benchmark, "Run matrix vector multiply benchmark, but no other computation.");
     app.add_flag("--transpose", transpose_matrix, "Transpose the matrix.");
@@ -998,7 +1000,7 @@ int main(int argc, char* argv[]) {
     //     }
     // }
 
-    save_all_data(
+    std::vector<myfloat> first_seq = save_all_data(
         wdm_filename,
         A.numRows,
         A.numCols,
@@ -1012,6 +1014,15 @@ int main(int argc, char* argv[]) {
         seq_position
         //hSp_list
     );
+
+    // run BM for testing
+    if (run_berle) {
+        std::cout << "Running Berlekamp-Massey algorithm on the first sequence..." << std::endl;
+        std::vector<myfloat> coeffs = berlekamp_massey(first_seq, prime);
+        std::cout << "Poly length: " << coeffs.size() << std::endl;
+        std::cout << "Poly coeffs: ";
+        display_vector(coeffs, 10);
+    }
 
     // int slen = hSp_list.size();
     // std::vector<myfloat> oneseq(slen,0);
