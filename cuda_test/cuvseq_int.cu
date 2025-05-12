@@ -841,12 +841,12 @@ int main(int argc, char* argv[]) {
     long long reportInterval = 1000;
     int last_nlen = 0;
 
-    std::cout<< "cuB: ";
-    cuB.display(prime, 10);
-    // std::cout<< "cuA: ";
-    // cuA.display(prime, 20);
-    std::cout<< "cuBigSp: ";
-    cuBigSp.display(prime, 10);
+    // std::cout<< "cuB: ";
+    // cuB.display(prime, 10);
+    // // std::cout<< "cuA: ";
+    // // cuA.display(prime, 20);
+    // std::cout<< "cuBigSp: ";
+    // cuBigSp.display(prime, 10);
 
     int to_be_computed = max_nlen-seq_position;
     for (int round=0;round<to_be_computed/4;round++){
@@ -984,8 +984,8 @@ int main(int argc, char* argv[]) {
         // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
         compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position, prime);
         compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime); 
-        std::cout<< "cuBigSp(2): ";
-        cuBigSp.display(prime, 10); 
+        // std::cout<< "cuBigSp(2): ";
+        // cuBigSp.display(prime, 10); 
         
     }
 
