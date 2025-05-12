@@ -578,9 +578,9 @@ int main(int argc, char* argv[]) {
 
         std::cout << "File data: prime " << prime << ", matrix size " 
                   << tm << "x" << tn << ", num_v " << tnum_v << "." << std::endl;
-        std::cout << "seq len = " << seq.size() << std::endl;
+        std::cout << "seq_list len = " << seq_list.size() << std::endl;
         if (!seq.empty()) {
-            std::cout << "seq[0].len() = " << seq[0].size() << std::endl;
+            std::cout << "seq_list[0].len() = " << seq_list[0].size() << std::endl;
         }
 
         std::cout << "Loaded state from file " << wdm_filename << " with " 
