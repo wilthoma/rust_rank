@@ -389,10 +389,10 @@ void compute_and_push_bigsp2(CudaDenseMatrix<myfloat> &B, CudaDenseMatrix<myfloa
 
 // }
 
-void display_cuda_buffer(myfloat* d_buffer, int size, int max_elements = 10) {
+void display_cuda_buffer(myfloat* d_buffer, int size, int prime, int max_elements = 10) {
     std::vector<myfloat> h_buffer(size);
     cudaMemcpy(h_buffer.data(), d_buffer, size * sizeof(myfloat), cudaMemcpyDeviceToHost);
-    display_vector(h_buffer, max_elements);
+    display_vector(h_buffer, prime, max_elements);
 }
 
 std::vector<myfloat> save_all_data(
@@ -877,7 +877,7 @@ int main(int argc, char* argv[]) {
         // );
         
         cuA.spmm(cuB, cuC, prime);
-        display_cuda_buffer(dC, C_size, 10);
+        display_cuda_buffer(dC, C_size, prime, 10);
         toc("Handcrafted 2d...:");
         tic();
         // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
