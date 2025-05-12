@@ -66,7 +66,7 @@
 #include "include/CLI11.hpp"
 #include "matrices.h"
 #include "cuda_helpers.h"
-#include "wdm_file.h"
+#include "wdmfiles.h"
 
 
 const int THESMALLPRIME = 3323;
