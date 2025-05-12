@@ -229,6 +229,7 @@ struct CudaDenseMatrix {
         int size = numRows * numCols;
         //CHECK_CUDA(
             modp_kernel<<<((size + 255) / 256), 256>>>(d_data, size, 0, prime);
+            CHECK_CUDA(cudaGetLastError());
         //);
     }
 
@@ -253,10 +254,12 @@ struct CudaDenseMatrix {
             dense_gemm_TN_chunked3D_offset<<<gridDim, blockDim>>>(
             n_dense_vectors, n_veclen, d_data, B.d_data, dC, offset, DOT_CHUNK_SIZE, prime);
         //);
+        CHECK_CUDA(cudaGetLastError());
     
         //CHECK_CUDA(
             modp_kernel<T><<<((Sp_size + 255) / 256), 256>>>(dC, Sp_size, offset, prime);
         //);
+        CHECK_CUDA(cudaGetLastError());
 
     }
 
