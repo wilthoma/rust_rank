@@ -418,29 +418,28 @@ std::vector<myfloat> save_all_data(
     std::vector<myfloat> hB(n_cols * n_dense_cols);
     CHECK_CUDA(cudaMemcpy(hB.data(), dB, n_cols * n_dense_cols * sizeof(myfloat), cudaMemcpyDeviceToHost));
     
-        // extract the sequence from dBigSp
-        std::cout << "Extracting the sequence from dBigSp" << std::endl;
-        int effectivesize = seq_position * n_dense_cols * n_dense_cols;
-        std::vector<myfloat> hBigSp(effectivesize);
-        CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
-        std::cout << "Done.";
+    // extract the sequence from dBigSp
+    std::cout << "Extracting the sequence from dBigSp" << std::endl;
+    int effectivesize = seq_position * n_dense_cols * n_dense_cols;
+    std::vector<myfloat> hBigSp(effectivesize);
+    CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
+    std::cout << "Done.";
 
     // translate into vector of vectors
     std::vector<std::vector<myfloat>> cur_B = reshape_to_vector_of_vectors(hB, n_cols);
-    std::cout << "A" << std::endl;
     std::vector<std::vector<myfloat>> ini_B = reshape_to_vector_of_vectors(initial_B, n_cols);
-    std::cout << "A" << std::endl;
-    std::vector<std::vector<myfloat>> sp_list = reshape_to_vector_of_vectors(hBigSp, n_dense_cols*n_dense_cols);
+    std::vector<std::vector<myfloat>> sp_list = reshape_to_vector_of_vectors(hBigSp, seq_position); //n_dense_cols*n_dense_cols);
     // select upper triangular part of sp_list
-    int nlen = sp_list.size(); 
+    int nlen = seq_position; 
     std::vector<std::vector<myfloat>> sp_list_upper;
     for (int i = 0; i < n_dense_cols; ++i) {
         for (int j = i; j < n_dense_cols; ++j) {
-            std::vector<myfloat> sp_row(nlen);
-            for (int k = 0; k < nlen; ++k) {
-                sp_row[k] = sp_list[k][i * n_dense_cols + j];
-            }
-            sp_list_upper.push_back(sp_row);
+            // std::vector<myfloat> sp_row(nlen);
+            // for (int k = 0; k < nlen; ++k) {
+            //     sp_row[k] = sp_list[k][i * n_dense_cols + j];
+            // }
+            // sp_list_upper.push_back(sp_row);
+            sp_list_upper.push_back(sp_list[i + n_dense_cols * j]);
         }
     }
 
@@ -991,28 +990,7 @@ int main(int argc, char* argv[]) {
     std::cout << "SpMM operation runtime: " << milliseconds << " ms" << std::endl;
     std::cout << "Total throughput: " << seq_position * num_v * 1e3 / milliseconds  << "/s." << std::endl;
 
-    // CHECK_CUDA(cudaEventDestroy(start));
-    // CHECK_CUDA(cudaEventDestroy(stop));
 
-
-    // reduce mod p 
-    // Call the kernel
-    // auto modstart = std::chrono::high_resolution_clock::now();
-    // int matrix_size = C_size;
-    // apply_function_kernel<<<((matrix_size + 255) / 256), 256>>>(dC, matrix_size);
-    // auto modstop = std::chrono::high_resolution_clock::now();
-    // auto modMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(modstop - modstart).count();
-    // std::cout << "Kernel execution runtime (mod): " << modMilliseconds << " ms" << std::endl;
-
-    //--------------------------------------------------------------------------
-    // device result check
-    // auto copyStart = std::chrono::high_resolution_clock::now();
-    // CHECK_CUDA( cudaMemcpy(hC, dC, C_size * sizeof(myfloat),
-    //                        cudaMemcpyDeviceToHost) )
-    // auto copyStop = std::chrono::high_resolution_clock::now();
-    // auto copyMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(copyStop - copyStart).count();
-    // std::cout << "Device to host copy runtime: " << copyMilliseconds << " ms" << std::endl;
-    
     // int correct = 1;
 
     // check minimal polynomials 

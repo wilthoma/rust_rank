@@ -342,8 +342,11 @@ struct CooMatrix {
 //     // }
 // }
 
+
 template<typename T>
 std::vector<std::vector<T>> reshape_to_vector_of_vectors(const std::vector<T>& input, int N) {
+    // the output is a vector of N-vectors x_1, x_2, ..., x_k, with k = input.size()/N
+    // the input vector is x_{11}, x_{21}, ....
     if (input.size() % N != 0) {
         throw std::invalid_argument("Input size is not divisible by N");
     }
