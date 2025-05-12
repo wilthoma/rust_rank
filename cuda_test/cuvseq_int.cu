@@ -883,7 +883,7 @@ int main(int argc, char* argv[]) {
         
         // cuA.spmm(cuB, cuC, 0);
         cuA.spmm(cuB, cuC, prime);
-        std::cout<< "cuC: ";
+        // std::cout<< "cuC: ";
         // cuC.display(prime, 10);
         // toc("Handcrafted 2d...:");
         tic();
