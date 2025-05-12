@@ -374,7 +374,7 @@ inline long long stoc()
 //     return 0;
 // }
 
-void compute_and_push_bigsp2(CudaDenseMatrix<myfloat> &B, CudaDenseMatrix<myfloat> &C, myfloat* dBigSp, int &seq_position, myfloat prime) {
+inline void compute_and_push_bigsp2(CudaDenseMatrix<myfloat> &B, CudaDenseMatrix<myfloat> &C, myfloat* dBigSp, int &seq_position, myfloat prime) {
     B.mTm_tri(C, dBigSp, seq_position, prime);
     seq_position++;
 }
