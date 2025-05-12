@@ -572,11 +572,13 @@ int main(int argc, char* argv[]) {
         v.resize(tn * num_v);
         curv.resize(tn * num_v);
         seq.resize(num_v * num_v * seq_list[0].size());
+        std::cout << "A";
         for (int i=0;i<tn;i++) {
             int ii = 0;
             for (int j=0;j<num_v;j++) {
                 v[i*num_v+j] = v_list[j][i];
                 curv[i*num_v+j] = curv_list[j][i];
+                std::cout << i << " " << j << std::endl;
                 for (int k=j;k<num_v;k++) {
                     seq[i*num_v*num_v+j*num_v + k] = seq_list[ii][i];
                     seq[i*num_v*num_v+k*num_v + j] = seq[i*num_v*num_v+j*num_v + k];
