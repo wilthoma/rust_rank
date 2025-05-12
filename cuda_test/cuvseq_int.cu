@@ -783,7 +783,7 @@ int main(int argc, char* argv[]) {
 
     CudaCsrMatrix<myfloat> cuA = CudaCsrMatrix<myfloat>::from_host(A);
     CudaCsrMatrix<myfloat> cuAT = CudaCsrMatrix<myfloat>::from_host(AT);
-    CudaDenseMatrix<myfloat> cuB = CudaDenseMatrix<myfloat>::from_host(v, A.numCols, denseCols);
+    CudaDenseMatrix<myfloat> cuB = CudaDenseMatrix<myfloat>::from_host(curv, A.numCols, denseCols);
     CudaDenseMatrix<myfloat> cuC = CudaDenseMatrix<myfloat>::allocate(A.numRows, denseCols);
     CudaDenseMatrix<myfloat> cuD = CudaDenseMatrix<myfloat>::allocate(A.numCols, denseCols);
 
