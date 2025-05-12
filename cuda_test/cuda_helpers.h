@@ -152,6 +152,29 @@ struct CudaCsrMatrix {
         }
     }
 
+    void display(T prime, int max_elements = 10) {
+        std::vector<int> host_rowOffsets(numRows + 1);
+        std::vector<int> host_colIndices(values.size());
+        std::vector<T> host_values(values.size());
+
+        CHECK_CUDA(cudaMemcpy(host_rowOffsets.data(), d_rowOffsets, (numRows + 1) * sizeof(int), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(host_colIndices.data(), d_colIndices, values.size() * sizeof(int), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(host_values.data(), d_values, values.size() * sizeof(T), cudaMemcpyDeviceToHost));
+
+        int displayed_elts = 0;
+        // Display the CSR matrix
+        std::cout << "CSR Matrix:" << std::endl;
+        for (int i = 0; i < numRows; ++i) {
+            for (int j = host_rowOffsets[i]; j < host_rowOffsets[i + 1]; ++j) {
+                std::cout << "(" << i << ", " << host_colIndices[j] << ") = " << host_values[j] % prime << std::endl;
+                displayed_elts++;
+                if (displayed_elts >= max_elements) {
+                    std::cout << "..." << std::endl;
+                    return;
+                }
+            }
+        }
+    }
     
 };
 
