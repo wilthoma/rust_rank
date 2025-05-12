@@ -133,7 +133,7 @@ struct CudaCsrMatrix {
     }
 
     // produces the product this * B and stores the result in C
-    void spmm(const CudaDenseMatrix<T>& B, CudaDenseMatrix<T>& C, T prime = 0) {
+    inline void spmm(const CudaDenseMatrix<T>& B, CudaDenseMatrix<T>& C, T prime = 0) {
         // Check if the dimensions are compatible
         if (numCols != B.numRows) {
             throw std::runtime_error("Matrix dimensions do not match for SpMM.");
@@ -224,7 +224,7 @@ struct CudaDenseMatrix {
         CHECK_CUDA(cudaFree(d_data));
     }
 
-    void modp(T prime) {
+    inline void modp(T prime) {
         int size = numRows * numCols;
         //CHECK_CUDA(
             modp_kernel<<<((size + 255) / 256), 256>>>(d_data, size, 0, prime);
@@ -232,7 +232,7 @@ struct CudaDenseMatrix {
     }
 
     // computes the upper tringular part of this^T* B and stores the desult in dC, at position position
-    void mTm_tri(const CudaDenseMatrix<T>& B, T* dC, int seq_position, T prime) {
+    inline void mTm_tri(const CudaDenseMatrix<T>& B, T* dC, int seq_position, T prime) {
         // Check if the dimensions are compatible
         if (numRows != B.numRows || numCols != B.numCols) {
             throw std::runtime_error("Matrix dimensions do not match for M^T * B.");
