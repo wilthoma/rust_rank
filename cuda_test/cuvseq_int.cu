@@ -877,7 +877,7 @@ int main(int argc, char* argv[]) {
         // );
         
         cuA.spmm(cuB, cuC, prime);
-        display_cuda_buffer(dC, C_size, prime, 10);
+        display_cuda_buffer(cuC.d_data, cuC.numCols*cuC.numRows, prime, 10);
         toc("Handcrafted 2d...:");
         tic();
         // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
