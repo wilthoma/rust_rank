@@ -559,6 +559,12 @@ int main(int argc, char* argv[]) {
             wdm_filename, row_precond, col_precond, v_list, curv_list, seq_list
         );
 
+        std::cout << "preLoaded state from file " << wdm_filename << " with " 
+                  << (seq_list.empty() ? 0 : seq_list[0].size()) 
+                  << "tprime " << tprime << ", matrix size "
+                    << tm << "x" << tn << ", num_v " << tnum_v
+                  << std::endl;
+
         prime = static_cast<myfloat>(tprime);
         num_v = tnum_v;
 
