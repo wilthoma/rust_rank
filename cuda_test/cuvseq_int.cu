@@ -501,6 +501,7 @@ int main(int argc, char* argv[]) {
     size_t save_after = 200;
     size_t num_v = 1;
     myfloat pprime = THESMALLPRIME;
+    int cuda_device_id = 0;
 
     app.add_option("filename", sms_filename, "The SMS file containing the sparse matrix")
         ->required();
@@ -514,6 +515,8 @@ int main(int argc, char* argv[]) {
     app.add_flag("--transpose", transpose_matrix, "Transpose the matrix.");
 
     app.add_option("-N,--N", max_nlen, "The desired sequence length to be computed")
+        ->default_val(0);
+    app.add_option("-d,--d", cuda_device_id, "Selects a CUDA device to use. Default is 0.")
         ->default_val(0);
 
     app.add_option("-s,--saveafter", save_after, "Trigger automatic saves each s seconds.")
@@ -537,6 +540,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "Matrix file " << sms_filename << " does not exist. Exiting." << std::endl;
         return -1;
     }
+
+    cudaSetDevice(cuda_device_id);
     
     // load matrix from file
     // if (argc < 5) {
