@@ -148,7 +148,12 @@ struct CudaCsrMatrix {
         //CHECK_CUDA(
             csr_spmm<<<gridDim, blockDim>>>(
             numRows,B.numCols, d_rowOffsets, d_colIndices, d_values,
-            B.d_data, C.d_data);//);
+            B.d_data, C.d_data);
+            auto err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "SpMM: Error in kernel launch: %s\n", cudaGetErrorString(err));
+            }
+        //);
         if (prime != 0) {
             C.modp(prime);
         }
