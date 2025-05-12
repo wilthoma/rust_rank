@@ -14,63 +14,87 @@
 
 
 template <typename T>
-class ModMul {
-public:
-    static const T PRIME;
-    static const T ROOT;
-
-    T value;
-
-    ModMul(T v = 0) : value(v) {}
-
-    ModMul<T> mulmod(const ModMul<T>& other) const {
-        return ModMul<T>((static_cast<uint64_t>(value) * other.value) % PRIME);
+inline T PRIME() {
+    if constexpr (std::is_same_v<T, uint32_t>) {
+        return 2013265921;
+    } else if constexpr (std::is_same_v<T, uint64_t>) {
+        return 2305843009146585089ULL;
+    } else if constexpr (std::is_same_v<T, __uint128_t>) {
+        return 18446744069414584321ULL;
+    } else {
+        static_assert(false, "Unsupported type for PRIME");
     }
+}
 
-    ModMul<T> addmod(const ModMul<T>& other) const {
-        T a = value + other.value;
-        return ModMul<T>(a >= PRIME ? a - PRIME : a);
+template <typename T>
+inline T ROOT() {
+    if constexpr (std::is_same_v<T, uint32_t>) {
+        return 31;
+    } else if constexpr (std::is_same_v<T, uint64_t>) {
+        return 3;
+    } else if constexpr (std::is_same_v<T, __uint128_t>) {
+        return 7;
+    } else {
+        static_assert(false, "Unsupported type for ROOT");
     }
+}
 
-    ModMul<T> submod(const ModMul<T>& other) const {
-        return ModMul<T>(value < other.value ? (value + PRIME) - other.value : value - other.value);
+template <typename T>
+inline T mod_add(T a, T b) {
+    T result = a + b;
+    if (result >= PRIME<T>()) {
+        result -= PRIME<T>();
     }
+    return result;
+}
 
-    ModMul<T> powmod(T exp) const {
-        ModMul<T> base = *this;
-        ModMul<T> result = 1;
-        T two = 2;
-        while (exp > 0) {
-            if (exp % two == 1) {
-                result = result.mulmod(base);
-            }
-            base = base.mulmod(base);
-            exp /= two;
+template <typename T>
+inline T mod_sub(T a, T b) {
+    if (a < b) {
+        return PRIME<T>()-b+a;
+    } else {
+        return a-b;
+    }
+}
+
+template <typename T>
+inline T mod_pow(T base, T exp) {
+    T result = 1;
+    while (exp > 0) {
+        if (exp % 2 == 1) {
+            result = mod_mul(result,base);
         }
-        return result;
+        base = mod_mul(base,base);
+        exp /= 2;
     }
+    return result;
+}
 
-    ModMul<T> invmod() const {
-        T two = 2;
-        return powmod(PRIME - two);
+template <typename T>
+T mod_inv(T x) {
+    return mod_pow(x, PRIME<T>() - 2);
+}
+
+template <typename T>
+T mod_mul(T a, T b) {
+    if constexpr (std::is_same_v<T, uint32_t>) {
+        return static_cast<T>((static_cast<uint64_t>(a) * b) % PRIME<T>());
+    } else if constexpr (std::is_same_v<T, uint64_t>) {
+        __uint128_t product = static_cast<__uint128_t>(a) * b;
+        uint64_t cc = static_cast<uint64_t>((product << 67) >> 67); // lowest 61 bits
+        uint64_t bb = static_cast<uint64_t>((product << 32) >> 93); // bits 61-95
+        uint64_t aa = static_cast<uint64_t>(product >> 96);         // bits 96-127
+        return mod_add(mod_sub(mod_add(cc, bb << 26), bb), mod_sub(mod_add(aa << 26, PRIME - aa), aa << 35));
+    } else if constexpr (std::is_same_v<T, __uint128_t>) {
+        __uint128_t product = a * b;
+        __uint128_t cc = (product << 64) >> 64;
+        __uint128_t bb = (product << 32) >> 96;
+        __uint128_t aa = product >> 96;
+        return mod_sub(mod_sub(mod_add(cc, bb << 32), bb), aa);
+    } else {
+        static_assert(false, "Unsupported type for mod_mul");
     }
-};
-
-template <>
-const uint32_t ModMul<uint32_t>::PRIME = 2013265921;
-template <>
-const uint32_t ModMul<uint32_t>::ROOT = 31;
-
-template <>
-const uint64_t ModMul<uint64_t>::PRIME = 2305843009146585089ULL;
-template <>
-const uint64_t ModMul<uint64_t>::ROOT = 3;
-
-template <>
-const __uint128_t ModMul<__uint128_t>::PRIME = 18446744069414584321ULL;
-template <>
-const __uint128_t ModMul<__uint128_t>::ROOT = 7;
-
+}
 
 
 template <typename T>
@@ -90,7 +114,6 @@ void ntt(std::vector<T>& a, bool invert) {
     const size_t n = a.size();
     const size_t bits = static_cast<size_t>(std::log2(n));
     assert((n & (n - 1)) == 0 && "Length of input array must be a power of 2");
-    const T two = T(1) + T(1);
 
     // Bit reversal permutation
     for (size_t i = 0; i < n; ++i) {
@@ -101,27 +124,27 @@ void ntt(std::vector<T>& a, bool invert) {
     }
 
     T root_pow = invert
-        ? root.powmod(p - T(1) - (p - T(1)) / T(n))
-        : root.powmod((p - T(1)) / T(n));
+        ? mod_pow(root, p - 1 - (p - 1) / n)
+        : mod_pow(root, (p - 1) / n);
 
     for (size_t len = 2; len <= n; len <<= 1) {
-        T wlen = root_pow.powmod(T(n / len));
+        T wlen = mod_pow(root_pow, n / len);
         for (size_t i = 0; i < n; i += len) {
-            T w = T(1);
+            T w = 1;
             for (size_t j = 0; j < len / 2; ++j) {
                 T u = a[i + j];
-                T v = a[i + j + len / 2].mulmod(w);
-                a[i + j] = u.addmod(v);
-                a[i + j + len / 2] = u.submod(v);
-                w = w.mulmod(wlen);
+                T v = mod_mul(a[i + j + len / 2],w);
+                a[i + j] = mod_add(u,v);
+                a[i + j + len / 2] = mod_sub(u,v);
+                w = mod_mul(w, wlen);
             }
         }
     }
 
     if (invert) {
-        T n_inv = T(n).powmod(p - two);
+        T n_inv = mod_pow(n, p - 2);
         for (auto& x : a) {
-            x = x.mulmod(n_inv);
+            x = mod_mul(x, n_inv);
         }
     }
 }
@@ -159,14 +182,14 @@ std::vector<T> generate_random_data(size_t len, T p) {
 
 // Test function for NTT and its inverse
 void test_ntt_inverse() {
-    using T = ModMul<uint64_t>;
-    const uint64_t p = T::PRIME; // A prime modulus
-    const uint64_t root = T::ROOT; // A primitive root modulo p
+    using T = uint64_t;
+    const T p = PRIME<T>(); // A prime modulus
+    const T root = ROOT<T>(); // A primitive root modulo p
     const size_t len = 16; // Must be a power of two
 
     // Generate random data
     std::vector<T> data;
-    auto raw_data = generate_random_data<uint64_t>(len, p);
+    auto raw_data = generate_random_data<T>(len, p);
     for (auto val : raw_data) {
         data.emplace_back(val);
     }
