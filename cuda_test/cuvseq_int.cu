@@ -542,16 +542,16 @@ int main(int argc, char* argv[]) {
 
     std::vector<myfloat> row_precond, col_precond;
     std::vector<myfloat> v, curv;
-    std::vector<std::vector<myfloat>> seq
+    std::vector<std::vector<myfloat>> seq;
     std::vector<std::vector<myfloat>> seq_list, v_list, curv_list;
-    size_t tm, tn;
+    size_t tm=0, tn=0;
     bool initialized = false;
 
     if (std::filesystem::exists(wdm_filename) && !overwrite) {
         std::cout << "Loading state from file " << wdm_filename << "..." << std::endl;
 
-        uint32_t tprime;
-        site_t tnum_v;
+        uint32_t tprime=0;
+        size_t tnum_v;
 
         std::tie(tprime, tm, tn, tnum_v) = load_wdm_file_sym(
             wdm_filename, row_precond, col_precond, v_list, curv_list, seq_list
@@ -644,9 +644,9 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if (initialized && (tm != a.n_rows || tn != a.n_cols)) {
+    if (initialized && (tm != A.numRows || tn != A.numCols)) {
         printf("Matrix dimensions do not match! %dx%d vs %dx%d", tm, tn, a.n_rows, a.n_cols);
-        std::process::exit(1);
+        exit(-1);
     }
 
     auto [max_row_nnz, max_col_nnz] = A.max_nnzs();
@@ -658,7 +658,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Prime number " << prime << " is valid for sequence computation, no overflows expected." << std::endl;
     } else {
         std::cerr << "Prime number " << prime << " is not valid, may result in overflows. Exiting..." << std::endl;
-        std::exit(1);
+        exit(1);
     }
 
     if (!initialized) {
