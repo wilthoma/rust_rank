@@ -96,7 +96,7 @@ vector<myfloat> berlekamp_massey(const vector<myfloat>& s, myfloat mod) {
 
     for (int n = 0; n < (int)s.size(); n++) {
         if (n%1000 == 0 )
-            std::cout << "." << std::flush();
+            std::cout << "." << std::flush;
 
         int d = s[n];
         for (int i = 1; i <= L; i++)
