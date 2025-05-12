@@ -15,3 +15,12 @@ module load modules/EasyBuild && module load GCC/13.3.0 && cd prog/tmp3/rust_ran
 ./cuvseq /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri19_11.txt 64
 
 ./cuvseq /r/scratch/users/wilthoma/gh_data/data/ordinary/odd_edges/contractD12_10.txt 64
+
+
+/usr/local/cuda/bin/nvcc cuvseq_int.cu -o cuvseq_int -gencode=arch=compute_89,code=sm_89
+
+
+./cuvseq_int /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri17_11.txt -v4 -N17000000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri17_11_gpu.wdm -o -s8000
+
+
+./cuvseq_int /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri18_11.txt -v1 -N34000000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri18_11_gpu1.wdm -o -s8000 -d1
