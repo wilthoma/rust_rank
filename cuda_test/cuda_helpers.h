@@ -153,8 +153,8 @@ struct CudaCsrMatrix {
             if (err != cudaSuccess) {
                 fprintf(stderr, "SpMM: Error in kernel launch: %s\n", cudaGetErrorString(err));
             }
-        std::cout << "SpMM kernel launched, result:" << std::endl;
-        C.display(prime, 10);
+        // std::cout << "SpMM kernel launched, result:" << std::endl;
+        // C.display(prime, 10);
         //);
         if (prime != 0) {
             C.modp(prime);
