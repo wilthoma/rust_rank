@@ -493,11 +493,12 @@ int main(int argc, char* argv[]) {
     bool benchmark = false;
     bool run_berle = false;
     bool transpose_matrix = false;
+    bool deterministic = false;
 
     size_t max_nlen = 0;
     size_t save_after = 200;
     size_t num_v = 1;
-    myfloat pprime = 0;
+    myfloat pprime = THESMALLPRIME;
 
     app.add_option("filename", sms_filename, "The SMS file containing the sparse matrix")
         ->required();
@@ -505,6 +506,7 @@ int main(int argc, char* argv[]) {
         ->default_val("");
     app.add_flag("-o,--overwrite", overwrite, "Overwrite existing files");
     app.add_flag("--berle", run_berle, "Run Berlekamp-Massey algorithm on the first sequence (for testing, only produces e correct generator if sequence long enough).");
+    app.add_flag("--det", deterministic, "Deterministic mode. No random preconditioners and starting vector is (1,..,1) (for testing.)");
 
     app.add_flag("--benchmark", benchmark, "Run matrix vector multiply benchmark, but no other computation.");
     app.add_flag("--transpose", transpose_matrix, "Transpose the matrix.");
@@ -663,10 +665,16 @@ int main(int argc, char* argv[]) {
     }
 
     if (!initialized) {
-        row_precond = generate_random_vector(A.numRows, prime, true);
-        col_precond = generate_random_vector(A.numCols, prime, true);
-        v = generate_random_vector(A.numCols * num_v, prime);
-
+        if (deterministic)
+        {
+            row_precond = std::vector<myfloat>(A.numRows, 1);
+            col_precond = std::vector<myfloat>(A.numCols, 1);
+            v = std::vector<myfloat>(A.numCols * num_v, 1);
+        } else {
+            row_precond = generate_random_vector(A.numRows, prime, true);
+            col_precond = generate_random_vector(A.numCols, prime, true);
+            v = generate_random_vector(A.numCols * num_v, prime);
+        }
         curv = v;
         // seq  = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
     }
@@ -1018,6 +1026,8 @@ int main(int argc, char* argv[]) {
     // run BM for testing
     if (run_berle) {
         std::cout << "Running Berlekamp-Massey algorithm on the first sequence..." << std::endl;
+        std::cout << "First sequence: ";
+        display_vector(first_seq, 10);
         std::vector<myfloat> coeffs = berlekamp_massey(first_seq, prime);
         std::cout << "Poly length: " << coeffs.size() << std::endl;
         std::cout << "Poly coeffs: ";
