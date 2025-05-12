@@ -541,8 +541,7 @@ int main(int argc, char* argv[]) {
     //int seq_len = atoi(argv[3]);
 
     std::vector<myfloat> row_precond, col_precond;
-    std::vector<myfloat> v, curv;
-    std::vector<std::vector<myfloat>> seq;
+    std::vector<myfloat> v, curv, seq;
     std::vector<std::vector<myfloat>> seq_list, v_list, curv_list;
     size_t tm=0, tn=0;
     bool initialized = false;
@@ -645,7 +644,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (initialized && (tm != A.numRows || tn != A.numCols)) {
-        printf("Matrix dimensions do not match! %dx%d vs %dx%d", tm, tn, a.n_rows, a.n_cols);
+        printf("Matrix dimensions do not match! %dx%d vs %dx%d", tm, tn, A.numRows, A.numCols);
         exit(-1);
     }
 
@@ -823,7 +822,7 @@ int main(int argc, char* argv[]) {
 
         if (elapsed-lastSave > save_after*1000) {
             std::cout << "Saving data after " << elapsed/1000 << " s" << std::endl;
-            save_all_data(wdm_filename, A.numRows, A.numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, dBigSp, seq_position);
+            save_all_data(wdm_filename, A.numRows, A.numCols, denseCols, prime, row_precond, col_precond, v, cuB.d_data, dBigSp, seq_position);
             lastSave = elapsed; // reset the timer
         }
         if (elapsed-lastReport > reportInterval) {
@@ -1005,9 +1004,9 @@ int main(int argc, char* argv[]) {
         A.numCols,
         num_v,
         prime,
-        scale_factors_rows,
-        scale_factors_cols,
-        h_dense,
+        row_precond,
+        col_precond,
+        v,
         cuB.d_data,
         dBigSp,
         seq_position
