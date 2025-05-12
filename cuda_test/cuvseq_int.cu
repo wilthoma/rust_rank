@@ -844,8 +844,9 @@ int main(int argc, char* argv[]) {
     // cuA.display(prime, 20);
     // std::cout<< "cuBigSp: ";
     // cuBigSp.display(prime, 10);
-    
-    for (int round=0;round<max_nlen/4;round++){
+
+    int to_be_computed = max_nlen-seq_position;
+    for (int round=0;round<to_be_computed/4;round++){
         auto now = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - computationStart).count();
 
