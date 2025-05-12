@@ -541,7 +541,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    cudaSetDevice(cuda_device_id);
+    CHECK_CUDA(cudaSetDevice(cuda_device_id));
     
     // load matrix from file
     // if (argc < 5) {

@@ -22,6 +22,7 @@ const int DOT_CHUNK_SIZE = 64;
 }
 
 
+
 template<typename T>
 __global__ void csr_spmm(
     int M, int N,
