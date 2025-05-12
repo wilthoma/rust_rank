@@ -584,7 +584,7 @@ int main(int argc, char* argv[]) {
         }
 
         std::cout << "Loaded state from file " << wdm_filename << " with " 
-                  << (seq.empty() ? 0 : seq[0].size()) 
+                  << (seq.empty() ? 0 : seq_list[0].size()) 
                   << " entries. Note: parameters in WDM file take precedence over those passed via command line." 
                   << std::endl;
 
