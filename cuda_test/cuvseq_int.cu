@@ -829,6 +829,8 @@ int main(int argc, char* argv[]) {
     cuB.display(prime, 10);
     std::cout<< "cuA: ";
     cuA.display(prime, 20);
+    std::cout<< "cuBigSp: ";
+    cuBigSp.display(prime, 10);
     
     for (int round=0;round<max_nlen/4;round++){
         auto now = std::chrono::high_resolution_clock::now();
@@ -921,6 +923,8 @@ int main(int argc, char* argv[]) {
         // compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
         compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position, prime);
         compute_and_push_bigsp2(cuD, cuD, dBigSp, seq_position, prime);
+        std::cout<< "cuBigSp: ";
+        cuBigSp.display(prime, 10);
         toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
@@ -962,7 +966,9 @@ int main(int argc, char* argv[]) {
         // compute_and_push_sp(dB, dD, dSp, B_num_cols, A_num_cols);
         // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
         compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position, prime);
-        compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime);  
+        compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime); 
+        std::cout<< "cuBigSp(2): ";
+        cuBigSp.display(prime, 10); 
         
     }
 
