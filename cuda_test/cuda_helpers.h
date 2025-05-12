@@ -235,7 +235,7 @@ struct CudaDenseMatrix {
     inline void mTm_tri(const CudaDenseMatrix<T>& B, T* dC, int seq_position, T prime) {
         // Check if the dimensions are compatible
         if (numRows != B.numRows || numCols != B.numCols) {
-            throw std::runtime_error("Matrix dimensions do not match for M^T * B.");
+            throw std::runtime_error("Matrix dimensions do not match for M^T * B.\n");
         }
         int n_veclen = numRows;
         int n_dense_vectors = numCols;
