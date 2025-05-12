@@ -95,6 +95,9 @@ vector<myfloat> berlekamp_massey(const vector<myfloat>& s, myfloat mod) {
     int L = 0, m = 1, b = 1;
 
     for (int n = 0; n < (int)s.size(); n++) {
+        if (n%1000 == 0 )
+            std::cout << ".";
+
         int d = s[n];
         for (int i = 1; i <= L; i++)
             d = (d + 1LL * C[i] * s[n - i]) % mod;
