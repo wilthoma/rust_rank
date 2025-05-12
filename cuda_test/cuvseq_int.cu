@@ -430,7 +430,7 @@ std::vector<myfloat> save_all_data(
     std::vector<std::vector<myfloat>> ini_B = reshape_to_vector_of_vectors(initial_B, n_cols);
     std::vector<std::vector<myfloat>> sp_list = reshape_to_vector_of_vectors(hBigSp, seq_position); //n_dense_cols*n_dense_cols);
     // select upper triangular part of sp_list
-    int nlen = seq_position; 
+    // int nlen = seq_position; 
     std::vector<std::vector<myfloat>> sp_list_upper;
     for (int i = 0; i < n_dense_cols; ++i) {
         for (int j = i; j < n_dense_cols; ++j) {
@@ -824,12 +824,12 @@ int main(int argc, char* argv[]) {
     long long reportInterval = 1000;
     int last_nlen = 0;
 
-    std::cout<< "cuB: ";
-    cuB.display(prime, 10);
-    std::cout<< "cuA: ";
-    cuA.display(prime, 20);
-    std::cout<< "cuBigSp: ";
-    cuBigSp.display(prime, 10);
+    // std::cout<< "cuB: ";
+    // cuB.display(prime, 10);
+    // std::cout<< "cuA: ";
+    // cuA.display(prime, 20);
+    // std::cout<< "cuBigSp: ";
+    // cuBigSp.display(prime, 10);
     
     for (int round=0;round<max_nlen/4;round++){
         auto now = std::chrono::high_resolution_clock::now();
@@ -884,8 +884,8 @@ int main(int argc, char* argv[]) {
         // cuA.spmm(cuB, cuC, 0);
         cuA.spmm(cuB, cuC, prime);
         std::cout<< "cuC: ";
-        cuC.display(prime, 10);
-        toc("Handcrafted 2d...:");
+        // cuC.display(prime, 10);
+        // toc("Handcrafted 2d...:");
         tic();
         // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
         // toc("apply_function_kernel C");
@@ -908,8 +908,8 @@ int main(int argc, char* argv[]) {
         // );
         cuAT.spmm(cuC, cuD, prime);
         toc("SpMM A^T*C->D");
-        std::cout<< "cuD: ";
-        cuD.display(prime, 10);
+        // std::cout<< "cuD: ";
+        // cuD.display(prime, 10);
         // display_cuda_buffer(dD, D_size, 10);
         // tic();
         // apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
@@ -922,8 +922,8 @@ int main(int argc, char* argv[]) {
         // compute_and_push_sp(dD, dD, dSp, B_num_cols, A_num_cols);
         compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position, prime);
         compute_and_push_bigsp2(cuD, cuD, dBigSp, seq_position, prime);
-        std::cout<< "cuBigSp: ";
-        cuBigSp.display(prime, 10);
+        // std::cout<< "cuBigSp: ";
+        // cuBigSp.display(prime, 10);
         toc("compute_and_push_sp D");
 
         // Next multiply by A to get C
@@ -938,8 +938,8 @@ int main(int argc, char* argv[]) {
         // );
         // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
         cuA.spmm(cuD, cuC, prime);
-        std::cout<< "cuC(2): ";
-        cuC.display(prime, 10);
+        // std::cout<< "cuC(2): ";
+        // cuC.display(prime, 10);
         // and by A^T to get B
         // CHECK_CUSPARSE(cusparseSpMM(handle,
         //     CUSPARSE_OPERATION_TRANSPOSE,
@@ -957,8 +957,8 @@ int main(int argc, char* argv[]) {
         // );
         // apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         cuAT.spmm(cuC, cuB, prime);
-        std::cout<< "cuB: ";
-        cuB.display(prime, 10);
+        // std::cout<< "cuB: ";
+        // cuB.display(prime, 10);
 
         // compute_and_push_bigsp(dB, dD, dBigSp, B_num_cols, A_num_cols, seq_position);
         // compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);                               
@@ -966,8 +966,8 @@ int main(int argc, char* argv[]) {
         // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
         compute_and_push_bigsp2(cuB, cuD, dBigSp, seq_position, prime);
         compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime); 
-        std::cout<< "cuBigSp(2): ";
-        cuBigSp.display(prime, 10); 
+        // std::cout<< "cuBigSp(2): ";
+        // cuBigSp.display(prime, 10); 
         
     }
 
