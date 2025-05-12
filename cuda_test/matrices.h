@@ -343,15 +343,6 @@ struct CooMatrix {
 // }
 
 template<typename T>
-void display_vector(const std::vector<T>& vec, T prime, int max_elements = 10) {
-    std::cout << "Vector: ";
-    for (int i = 0; i < std::min(max_elements, (int)vec.size()); ++i) {
-        std::cout << (vec[i]>=0?vec[i]:vec[i]+prime) << " ";
-    }
-    std::cout << std::endl;
-}
-
-template<typename T>
 std::vector<std::vector<T>> reshape_to_vector_of_vectors(const std::vector<T>& input, int N) {
     if (input.size() % N != 0) {
         throw std::invalid_argument("Input size is not divisible by N");
@@ -394,5 +385,13 @@ std::vector<T> prettify_vect(const std::vector<T>& vec, T theprime) {
     return result;
 }
 
+template<typename T>
+void display_vector(const std::vector<T>& vec, T prime, int max_elements = 10) {
+    std::cout << "Vector: ";
+    for (int i = 0; i < std::min(max_elements, (int)vec.size()); ++i) {
+        std::cout << (vec[i]>=0?vec[i]:vec[i]+prime) << " ";
+    }
+    std::cout << std::endl;
+}
 
 #endif // MATRICES_H

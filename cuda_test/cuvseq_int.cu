@@ -825,6 +825,8 @@ int main(int argc, char* argv[]) {
     long long reportInterval = 1000;
     int last_nlen = 0;
 
+    std::cout<< "cuB: ";
+    cuB.display(prime, 10);
     
     for (int round=0;round<max_nlen/4;round++){
         auto now = std::chrono::high_resolution_clock::now();
@@ -877,7 +879,8 @@ int main(int argc, char* argv[]) {
         // );
         
         cuA.spmm(cuB, cuC, prime);
-        display_cuda_buffer(cuC.d_data, cuC.numCols*cuC.numRows, prime, 10);
+        std::cout<< "cuC: ";
+        cuC.display(prime, 10);
         toc("Handcrafted 2d...:");
         tic();
         // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
@@ -901,6 +904,8 @@ int main(int argc, char* argv[]) {
         // );
         cuAT.spmm(cuC, cuD, prime);
         toc("SpMM A^T*C->D");
+        std::cout<< "cuD: ";
+        cuD.display(prime, 10);
         // display_cuda_buffer(dD, D_size, 10);
         // tic();
         // apply_function_kernel<<<((D_size + 255) / 256), 256>>>(dD, D_size);
@@ -927,6 +932,8 @@ int main(int argc, char* argv[]) {
         // );
         // apply_function_kernel<<<((C_size + 255) / 256), 256>>>(dC, C_size);
         cuA.spmm(cuD, cuC, prime);
+        std::cout<< "cuC(2): ";
+        cuC.display(prime, 10);
         // and by A^T to get B
         // CHECK_CUSPARSE(cusparseSpMM(handle,
         //     CUSPARSE_OPERATION_TRANSPOSE,
@@ -944,6 +951,8 @@ int main(int argc, char* argv[]) {
         // );
         // apply_function_kernel<<<((B_size + 255) / 256), 256>>>(dB, B_size);
         cuAT.spmm(cuC, cuB, prime);
+        std::cout<< "cuB: ";
+        cuB.display(prime, 10);
 
         // compute_and_push_bigsp(dB, dD, dBigSp, B_num_cols, A_num_cols, seq_position);
         // compute_and_push_bigsp(dB, dB, dBigSp, B_num_cols, A_num_cols, seq_position);                               

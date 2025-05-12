@@ -227,6 +227,12 @@ struct CudaDenseMatrix {
 
     }
 
+    void display(T prime, int max_elements = 10) {
+        std::vector<T> host_data(numRows * numCols);
+        CHECK_CUDA(cudaMemcpy(host_data.data(), d_data, numRows * numCols * sizeof(T), cudaMemcpyDeviceToHost));
+        display_vector(host_data, prime, max_elements);
+    }
+
 };
 
 
