@@ -783,7 +783,7 @@ int main(int argc, char* argv[]) {
     // int ldsp = B_num_cols; // Leading dimension of D
     // buffer for holding the whole sequence
     int bigSp_len = max_nlen+5; // +5 to be safe
-    int bigSp_size = Sp_size * bigSp_len;
+    // int bigSp_size = Sp_size * bigSp_len;
     // CHECK_CUDA(cudaMalloc((void**)&dBigSp, bigSp_size * sizeof(myfloat)));
     // CHECK_CUDA(cudaMemset(dBigSp, 0, bigSp_size * sizeof(myfloat)));
     
