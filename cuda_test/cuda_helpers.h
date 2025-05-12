@@ -100,6 +100,7 @@ template<typename T>
 struct CudaCsrMatrix {
     int numRows;
     int numCols;
+    int nnz;
     int* d_rowOffsets;
     int* d_colIndices;
     T* d_values;
@@ -108,6 +109,7 @@ struct CudaCsrMatrix {
         CudaCsrMatrix<T> cuda_matrix;
         cuda_matrix.numRows = host_matrix.numRows;
         cuda_matrix.numCols = host_matrix.numCols;
+        cuda_matrix.nnz = host_matrix.values.size();
 
         size_t size_rowOffsets = (host_matrix.numRows + 1) * sizeof(int);
         size_t size_colIndices = host_matrix.values.size() * sizeof(int);
@@ -154,12 +156,12 @@ struct CudaCsrMatrix {
 
     void display(T prime, int max_elements = 10) {
         std::vector<int> host_rowOffsets(numRows + 1);
-        std::vector<int> host_colIndices(values.size());
-        std::vector<T> host_values(values.size());
+        std::vector<int> host_colIndices(nnz);
+        std::vector<T> host_values(nnz);
 
         CHECK_CUDA(cudaMemcpy(host_rowOffsets.data(), d_rowOffsets, (numRows + 1) * sizeof(int), cudaMemcpyDeviceToHost));
-        CHECK_CUDA(cudaMemcpy(host_colIndices.data(), d_colIndices, values.size() * sizeof(int), cudaMemcpyDeviceToHost));
-        CHECK_CUDA(cudaMemcpy(host_values.data(), d_values, values.size() * sizeof(T), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(host_colIndices.data(), d_colIndices, nnz * sizeof(int), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(host_values.data(), d_values, nnz * sizeof(T), cudaMemcpyDeviceToHost));
 
         int displayed_elts = 0;
         // Display the CSR matrix
