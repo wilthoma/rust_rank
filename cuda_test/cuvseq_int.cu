@@ -571,21 +571,27 @@ int main(int argc, char* argv[]) {
         // flatten lists 
         v.resize(tn * num_v);
         curv.resize(tn * num_v);
-        seq.resize(num_v * num_v * seq_list[0].size());
+        int nlen = seq_list[0].size();
+        seq.resize(num_v * num_v * nlen);
         std::cout << "A";
         for (int i=0;i<tn;i++) {
-            int ii = 0;
             for (int j=0;j<num_v;j++) {
                 v[i*num_v+j] = v_list[j][i];
                 curv[i*num_v+j] = curv_list[j][i];
-                std::cout << i << " " << j << std::endl;
-                for (int k=j;k<num_v;k++) {
-                    seq[i*num_v*num_v+j*num_v + k] = seq_list[ii][i];
-                    seq[i*num_v*num_v+k*num_v + j] = seq[i*num_v*num_v+j*num_v + k];
-                    ii++;
-                }
             }
         }
+        int ii = 0;
+        for (int i=0;i<num_v;i++) {
+            for (int j=i;j<num_v;j++) {
+                // std::cout << i << " " << j << std::endl;
+                for (int k=0;k<nlen;k++) {
+                    seq[k*num_v*num_v+j*num_v + i] = seq_list[ii][k];
+                    seq[k*num_v*num_v+i*num_v + j] = seq[k*num_v*num_v+j*num_v + i];
+                }
+                ii++;
+            }
+        }
+                        
 
         std::cout << "File data: prime " << prime << ", matrix size " 
                   << tm << "x" << tn << ", num_v " << tnum_v << "." << std::endl;
