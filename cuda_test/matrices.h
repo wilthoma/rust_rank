@@ -151,6 +151,28 @@ struct CsrMatrix {
     static CsrMatrix<T> from_sms_file(const std::string& filename, T prime) {
         return CooMatrix<T>::from_sms_file(filename, prime).to_csr();
     }
+
+    std::pair<int, int> max_nnzs() const {
+        // Compute row and column nnz
+        std::vector<int> row_nnz(numRows, 0);
+        std::vector<int> col_nnz(numCols, 0);
+
+        // Precompute row_nnz
+        for (int row = 0; row < numRows; ++row) {
+            row_nnz[row] = rowOffsets[row + 1] - rowOffsets[row];
+        }
+
+        // Precompute col_nnz
+        for (const int& col : colIndices) {
+            col_nnz[col]++;
+        }
+
+        // Find the maximum nnz in rows and columns
+        int max_row_nnz = *std::max_element(row_nnz.begin(), row_nnz.end());
+        int max_col_nnz = *std::max_element(col_nnz.begin(), col_nnz.end());
+
+        return {max_row_nnz, max_col_nnz};
+    }
 };
 
 template<typename T>

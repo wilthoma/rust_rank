@@ -388,84 +388,10 @@ void compute_and_push_bigsp2(CudaDenseMatrix<myfloat> &B, CudaDenseMatrix<myfloa
 
 // }
 
-
-
 void display_cuda_buffer(myfloat* d_buffer, int size, int max_elements = 10) {
     std::vector<myfloat> h_buffer(size);
     cudaMemcpy(h_buffer.data(), d_buffer, size * sizeof(myfloat), cudaMemcpyDeviceToHost);
     display_vector(h_buffer, max_elements);
-}
-
-
-template <typename T>
-void save_wdm_file_sym(
-    const std::string& wdm_filename,
-    size_t n_rows,
-    size_t n_cols,
-    T theprime,
-    const std::vector<T>& row_precond,
-    const std::vector<T>& col_precond,
-    const std::vector<std::vector<T>>& v_list,
-    const std::vector<std::vector<T>>& curv_list,
-    const std::vector<std::vector<T>>& seq_list
-) {
-    std::ofstream file(wdm_filename);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open file: " + wdm_filename);
-    }
-
-    // Write the first line: m n p Nlen num_u num_v
-    file << n_rows << " " << n_cols << " " << theprime << " " 
-         << seq_list[0].size() << " " << v_list.size() << "\n";
-
-    // Write the second line: row_precond
-    for (size_t i = 0; i < row_precond.size(); ++i) {
-        if (i > 0) file << " ";
-        file << row_precond[i];
-    }
-    file << "\n";
-
-    // Write the third line: col_precond
-    for (size_t i = 0; i < col_precond.size(); ++i) {
-        if (i > 0) file << " ";
-        file << col_precond[i];
-    }
-    file << "\n";
-
-    // Write the v_list
-    for (const auto& vv : v_list) {
-        auto v = prettify_vect(vv, theprime);
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (i > 0) file << " ";
-            file << v[i];
-        }
-        file << "\n";
-    }
-
-    // Write the curv_list
-    for (const auto& curvv : curv_list) {
-        auto curv = prettify_vect(curvv, theprime);
-        for (size_t i = 0; i < curv.size(); ++i) {
-            if (i > 0) file << " ";
-            file << curv[i];
-        }
-        file << "\n";
-    }
-
-    // Write the seq_list
-    for (const auto& seq : seq_list) {
-        auto seq_pretty = prettify_vect(seq, theprime);
-        for (size_t i = 0; i < seq_pretty.size(); ++i) {
-            if (i > 0) file << " ";
-            file << seq_pretty[i];
-        }
-        file << "\n";
-    }
-
-    file.close();
-    if (!file) {
-        throw std::runtime_error("Failed to write to file: " + wdm_filename);
-    }
 }
 
 int save_all_data(
@@ -478,7 +404,9 @@ int save_all_data(
     const std::vector<myfloat>& col_precond,
     const std::vector<myfloat>& initial_B,
     const myfloat* dB,
-    const std::vector<myfloat>& hBigSp
+    const myfloat* dBigSp,
+    int seq_position
+    // const std::vector<myfloat>& hBigSp
     //const std::vector<std::vector<myfloat>>& sp_list
 ) 
 {
@@ -489,7 +417,12 @@ int save_all_data(
     std::vector<myfloat> hB(n_cols * n_dense_cols);
     CHECK_CUDA(cudaMemcpy(hB.data(), dB, n_cols * n_dense_cols * sizeof(myfloat), cudaMemcpyDeviceToHost));
     
-    std::cout << "A" << std::endl;
+        // extract the sequence from dBigSp
+        std::cout << "Extracting the sequence from dBigSp" << std::endl;
+        int effectivesize = seq_position * n_dense_cols * n_dense_cols;
+        std::vector<myfloat> hBigSp(effectivesize);
+        CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
+        std::cout << "Done.";
 
     // translate into vector of vectors
     std::vector<std::vector<myfloat>> cur_B = reshape_to_vector_of_vectors(hB, n_cols);
@@ -509,7 +442,6 @@ int save_all_data(
             sp_list_upper.push_back(sp_row);
         }
     }
-    std::cout << "A" << std::endl;
 
     save_wdm_file_sym(
         filename,
@@ -528,81 +460,6 @@ int save_all_data(
 }
 
 
-template <typename T>
-std::tuple<uint32_t, size_t, size_t, size_t> load_wdm_file_sym(
-    const std::string& wdm_filename,
-    std::vector<T>& row_precond,
-    std::vector<T>& col_precond,
-    std::vector<std::vector<T>>& v_list,
-    std::vector<std::vector<T>>& curv_list,
-    std::vector<std::vector<T>>& seq_list
-) {
-    std::ifstream file(wdm_filename);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open file: " + wdm_filename);
-    }
-
-    // Read the first line: m n p Nlen num_v
-    size_t m, n, nlen, num_v;
-    uint32_t p;
-    file >> m >> n >> p >> nlen >> num_v;
-    file.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to the next line
-
-    // Read row_precond
-    row_precond.resize(m);
-    for (size_t i = 0; i < m; ++i) {
-        file >> row_precond[i];
-    }
-    file.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to the next line
-
-    // Read col_precond
-    col_precond.resize(n);
-    for (size_t i = 0; i < n; ++i) {
-        file >> col_precond[i];
-    }
-    file.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Skip to the next line
-
-    // Read v_list
-    v_list.clear();
-    for (size_t i = 0; i < num_v; ++i) {
-        std::vector<T> v(n);
-        for (size_t j = 0; j < n; ++j) {
-            file >> v[j];
-        }
-        v_list.push_back(std::move(v));
-    }
-
-    // Read curv_list
-    curv_list.clear();
-    for (size_t i = 0; i < num_v; ++i) {
-        std::vector<T> curv(n);
-        for (size_t j = 0; j < n; ++j) {
-            file >> curv[j];
-        }
-        curv_list.push_back(std::move(curv));
-    }
-
-    // Read seq_list
-    seq_list.clear();
-    size_t seq_count = num_v * (num_v + 1) / 2;
-    for (size_t i = 0; i < seq_count; ++i) {
-        std::vector<T> seq(nlen);
-        for (size_t j = 0; j < nlen; ++j) {
-            file >> seq[j];
-        }
-        seq_list.push_back(std::move(seq));
-    }
-
-    // Ensure all vectors are of the correct size
-    if (row_precond.size() != m) {
-        throw std::runtime_error("Row preconditioner length does not match matrix rows");
-    }
-    if (col_precond.size() != n) {
-        throw std::runtime_error("Column preconditioner length does not match matrix columns");
-    }
-
-    return std::make_tuple(p, m, n, num_v);
-}
 
 void report_progress(
     const long long elapsed,
@@ -663,12 +520,17 @@ int main(int argc, char* argv[]) {
 
 
     CLI11_PARSE(app, argc, argv);
+
     if (wdm_filename.empty()) {
         wdm_filename = sms_filename + ".wdm";
     }
 
     myfloat prime = pprime;
-
+    if (!std::filesystem::exists(sms_filename)) {
+        std::cerr << "Matrix file " << sms_filename << " does not exist. Exiting." << std::endl;
+        return -1;
+    }
+    
     // load matrix from file
     // if (argc < 5) {
     //     std::cerr << "Usage: " << argv[0] << " <matrix_file> <nr dense columns> <sequence length> <outfile>" << std::endl;
@@ -677,7 +539,62 @@ int main(int argc, char* argv[]) {
     //char* outfile = argv[4];
     //int seq_len = atoi(argv[3]);
 
+    std::vector<myfloat> row_precond, col_precond;
+    std::vector<myfloat> v, curv;
+    std::vector<std::vector<myfloat>> seq
+    std::vector<std::vector<myfloat>> seq_list, v_list, curv_list;
+    size_t tm, tn;
+    bool initialized = false;
 
+    if (std::filesystem::exists(wdm_filename) && !overwrite) {
+        std::cout << "Loading state from file " << wdm_filename << "..." << std::endl;
+
+        uint32_t tprime;
+        site_t tnum_v;
+
+        std::tie(tprime, tm, tn, tnum_v) = load_wdm_file_sym(
+            wdm_filename, row_precond, col_precond, v_list, curv_list, seq_list
+        );
+
+        prime = static_cast<myfloat>(tprime);
+        num_v = tnum_v;
+
+        // flatten lists 
+        v.resize(tn * num_v);
+        curv.resize(tn * num_v);
+        seq.resize(num_v * num_v * seq_list[0].size());
+        for (int i=0;i<tn;i++) {
+            int ii = 0;
+            for (int j=0;j<num_v;j++) {
+                v[i*num_v+j] = v_list[j][i];
+                curv[i*num_v+j] = curv_list[j][i];
+                for (int k=j;k<num_v;k++) {
+                    seq[i*num_v*num_v+j*num_v + k] = seq_list[ii][i];
+                    seq[i*num_v*num_v+k*num_v + j] = seq[i*num_v*num_v+j*num_v + k];
+                    ii++;
+                }
+            }
+        }
+
+        std::cout << "File data: prime " << prime << ", matrix size " 
+                  << tm << "x" << tn << ", num_v " << tnum_v << "." << std::endl;
+        std::cout << "seq len = " << seq.size() << std::endl;
+        if (!seq.empty()) {
+            std::cout << "seq[0].len() = " << seq[0].size() << std::endl;
+        }
+
+        std::cout << "Loaded state from file " << wdm_filename << " with " 
+                  << (seq.empty() ? 0 : seq[0].size()) 
+                  << " entries. Note: parameters in WDM file take precedence over those passed via command line." 
+                  << std::endl;
+
+        initialized = true;
+    }
+
+    if (num_v <= 0) {
+        std::cerr << "Number of vectors must be > 0. Exiting." << std::endl;
+        return -1;
+    }
 
     // std::vector<int> rowIndices, colIndices, csrOffsets, csrColumns, csrColumnsT, csrOffsetsT;
     // std::vector<myfloat> values, csrValues, csrValuesT;
@@ -726,12 +643,36 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    if (initialized && (tm != a.n_rows || tn != a.n_cols)) {
+        printf("Matrix dimensions do not match! %dx%d vs %dx%d", tm, tn, a.n_rows, a.n_cols);
+        std::process::exit(1);
+    }
+
+    auto [max_row_nnz, max_col_nnz] = A.max_nnzs();
+    std::cout << "Max row nnz: " << max_row_nnz << " Max col nnz: " << max_col_nnz << std::endl;
+
+    if ((long long)max_row_nnz*prime*prime < std::numeric_limits<myfloat>::max()
+            && (long long)max_col_nnz*prime*prime < std::numeric_limits<myfloat>::max()
+            && (long long) DOT_CHUNK_SIZE * prime * prime < std::numeric_limits<myfloat>::max()) {
+        std::cout << "Prime number " << prime << " is valid for sequence computation, no overflows expected." << std::endl;
+    } else {
+        std::cerr << "Prime number " << prime << " is not valid, may result in overflows. Exiting..." << std::endl;
+        std::exit(1);
+    }
+
+    if (!initialized) {
+        row_precond = generate_random_vector(A.numRows, prime, true);
+        col_precond = generate_random_vector(A.numCols, prime, true);
+        v = generate_random_vector(A.numCols * num_v, prime);
+
+        curv = v;
+        // seq  = (0..num_v*(num_v+1)/2).map(|_| Vec::new()).collect();
+    }
+
     // Rescale the csr matrices
-    std::vector<myfloat> scale_factors_rows = generate_random_vector(A.numRows, prime, true);
-    std::vector<myfloat> scale_factors_cols = generate_random_vector(A.numCols, prime, true);
-    A.csr_rowrescale(scale_factors_rows, prime);
-    A.csr_columnrescale(scale_factors_cols, prime);
-    AT.csr_rowrescale(scale_factors_cols, prime);
+    A.csr_rowrescale(row_precond, prime);
+    A.csr_columnrescale(col_precond, prime);
+    AT.csr_rowrescale(col_precond, prime);
 
     // A.csr_rowrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_rows, THESMALLPRIME);
     // csr_columnrescale(numRows, numCols, csrOffsets, csrColumns, csrValues, scale_factors_cols, THESMALLPRIME);
@@ -743,7 +684,7 @@ int main(int argc, char* argv[]) {
     //int denseCols = atoi(argv[2]);  // Example: Result matrix column size
     int denseCols = num_v; 
     // std::cout<< "A" << denseCols << " " <<numCols << std::endl; 
-    std::vector<myfloat> h_dense = generate_random_vector(A.numCols * denseCols, prime);
+    // std::vector<myfloat> h_dense = generate_random_vector(A.numCols * denseCols, prime);
     // std::vector<myfloat> h_dense(numCols * denseCols, 1);
 
 
@@ -816,7 +757,7 @@ int main(int argc, char* argv[]) {
 
     CudaCsrMatrix<myfloat> cuA = CudaCsrMatrix<myfloat>::from_host(A);
     CudaCsrMatrix<myfloat> cuAT = CudaCsrMatrix<myfloat>::from_host(AT);
-    CudaDenseMatrix<myfloat> cuB = CudaDenseMatrix<myfloat>::from_host(h_dense, A.numCols, denseCols);
+    CudaDenseMatrix<myfloat> cuB = CudaDenseMatrix<myfloat>::from_host(v, A.numCols, denseCols);
     CudaDenseMatrix<myfloat> cuC = CudaDenseMatrix<myfloat>::allocate(A.numRows, denseCols);
     CudaDenseMatrix<myfloat> cuD = CudaDenseMatrix<myfloat>::allocate(A.numCols, denseCols);
 
@@ -841,18 +782,25 @@ int main(int argc, char* argv[]) {
     // buffer for holding the whole sequence
     int bigSp_len = max_nlen+5; // +5 to be safe
     int bigSp_size = Sp_size * bigSp_len;
-    CHECK_CUDA(cudaMalloc((void**)&dBigSp, bigSp_size * sizeof(myfloat)));
-    CHECK_CUDA(cudaMemset(dBigSp, 0, bigSp_size * sizeof(myfloat)));
+    // CHECK_CUDA(cudaMalloc((void**)&dBigSp, bigSp_size * sizeof(myfloat)));
+    // CHECK_CUDA(cudaMemset(dBigSp, 0, bigSp_size * sizeof(myfloat)));
     
-    
-    // CHECK_CUDA(cudaEventCreate(&start));
-    // CHECK_CUDA(cudaEventCreate(&stop));
-    // CHECK_CUDA(cudaEventRecord(start, 0));
+    CudaDenseMatrix<myfloat> cuBigSp = CudaDenseMatrix<myfloat>::allocate(bigSp_len, Sp_size);
+    if (seq.size() > 0) {
+        // copy the sequence from the file to the device
+        CHECK_CUDA(cudaMemcpy(cuBigSp.d_data, &seq[0], seq.size() * sizeof(myfloat), cudaMemcpyHostToDevice));
+    }
+    dBigSp = cuBigSp.d_data;
+    int seq_position = seq.size()/Sp_size; // the current write position into the output sequence buffer dBigSp
 
+    if (seq_position > 0) {
+        std::cout << "Resuming from position " << seq_position << std::endl;
+    } else {
+        std::cout << "Starting from scratch." << std::endl;
+        // add first sequence item
+        compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime);
+    }
     
-    int seq_position = 0; // the current write position into the output sequence buffer dBigSp
-
-    compute_and_push_bigsp2(cuB, cuB, dBigSp, seq_position, prime);
     // compute_and_push_sp(dB, dB, dSp, B_num_cols, A_num_cols);
     // dim3 blockDim(16, 32);
     // dim3 gridDim((A_num_rows + blockDim.x - 1) / blockDim.x,
@@ -874,7 +822,7 @@ int main(int argc, char* argv[]) {
 
         if (elapsed-lastSave > save_after*1000) {
             std::cout << "Saving data after " << elapsed/1000 << " s" << std::endl;
-           //TODOOO  save_all_data(wdm_filename, A.numRows, A.numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, hBigSp);
+            save_all_data(wdm_filename, A.numRows, A.numCols, denseCols, prime, scale_factors_rows, scale_factors_cols, h_dense, cuB.d_data, dBigSp, seq_position);
             lastSave = elapsed; // reset the timer
         }
         if (elapsed-lastReport > reportInterval) {
@@ -998,12 +946,7 @@ int main(int argc, char* argv[]) {
 
     // seq_position = hSp_list.size();
 
-    // extract the sequence from dBigSp
-    std::cout << "Extracting the sequence from dBigSp" << std::endl;
-    int effectivesize = seq_position * Sp_size;
-    std::vector<myfloat> hBigSp(effectivesize);
-    CHECK_CUDA(cudaMemcpy(hBigSp.data(), dBigSp, effectivesize * sizeof(myfloat), cudaMemcpyDeviceToHost));
-    std::cout << "Done.";
+
     // std::cout << "hSp (first 10 entries): ";
     
 
@@ -1065,7 +1008,8 @@ int main(int argc, char* argv[]) {
         scale_factors_cols,
         h_dense,
         cuB.d_data,
-        hBigSp
+        dBigSp,
+        seq_position
         //hSp_list
     );
 
@@ -1106,7 +1050,7 @@ int main(int argc, char* argv[]) {
     cuB.release();
     cuC.release();
     cuD.release();
-    CHECK_CUDA(cudaFree(dBigSp));
+    cuBigSp.release();
     CHECK_CUDA(cudaFree(dSp));
 
     return 0;
