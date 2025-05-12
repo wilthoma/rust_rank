@@ -11,6 +11,7 @@
 #include <execution>
 #include <random>
 #include <cassert>
+#include <iostream>
 
 
 template <typename T>
@@ -22,7 +23,8 @@ inline T PRIME() {
     } else if constexpr (std::is_same_v<T, __uint128_t>) {
         return 18446744069414584321ULL;
     } else {
-        static_assert(false, "Unsupported type for PRIME");
+        return 2013265921;
+        //static_assert(false, "Unsupported type for PRIME");
     }
 }
 
@@ -35,7 +37,8 @@ inline T ROOT() {
     } else if constexpr (std::is_same_v<T, __uint128_t>) {
         return 7;
     } else {
-        static_assert(false, "Unsupported type for ROOT");
+        return 3;
+        //static_assert(false, "Unsupported type for ROOT");
     }
 }
 
@@ -58,6 +61,28 @@ inline T mod_sub(T a, T b) {
 }
 
 template <typename T>
+T mod_mul(T a, T b) {
+    if constexpr (std::is_same_v<T, uint32_t>) {
+        return static_cast<T>((static_cast<uint64_t>(a) * b) % PRIME<T>());
+    } else if constexpr (std::is_same_v<T, uint64_t>) {
+        __uint128_t product = static_cast<__uint128_t>(a) * b;
+        uint64_t cc = static_cast<uint64_t>((product << 67) >> 67); // lowest 61 bits
+        uint64_t bb = static_cast<uint64_t>((product << 32) >> 93); // bits 61-95
+        uint64_t aa = static_cast<uint64_t>(product >> 96);         // bits 96-127
+        return mod_add(mod_sub(mod_add(cc, bb << 26), bb), mod_sub(mod_add(aa << 26, PRIME<T>() - aa), aa << 35));
+    } else if constexpr (std::is_same_v<T, __uint128_t>) {
+        __uint128_t product = a * b;
+        __uint128_t cc = (product << 64) >> 64;
+        __uint128_t bb = (product << 32) >> 96;
+        __uint128_t aa = product >> 96;
+        return mod_sub(mod_sub(mod_add(cc, bb << 32), bb), aa);
+    } else {
+        return static_cast<T>((static_cast<uint64_t>(a) * b) % PRIME<T>());
+        //static_assert(false, "Unsupported type for mod_mul");
+    }
+}
+
+template <typename T>
 inline T mod_pow(T base, T exp) {
     T result = 1;
     while (exp > 0) {
@@ -75,27 +100,6 @@ T mod_inv(T x) {
     return mod_pow(x, PRIME<T>() - 2);
 }
 
-template <typename T>
-T mod_mul(T a, T b) {
-    if constexpr (std::is_same_v<T, uint32_t>) {
-        return static_cast<T>((static_cast<uint64_t>(a) * b) % PRIME<T>());
-    } else if constexpr (std::is_same_v<T, uint64_t>) {
-        __uint128_t product = static_cast<__uint128_t>(a) * b;
-        uint64_t cc = static_cast<uint64_t>((product << 67) >> 67); // lowest 61 bits
-        uint64_t bb = static_cast<uint64_t>((product << 32) >> 93); // bits 61-95
-        uint64_t aa = static_cast<uint64_t>(product >> 96);         // bits 96-127
-        return mod_add(mod_sub(mod_add(cc, bb << 26), bb), mod_sub(mod_add(aa << 26, PRIME - aa), aa << 35));
-    } else if constexpr (std::is_same_v<T, __uint128_t>) {
-        __uint128_t product = a * b;
-        __uint128_t cc = (product << 64) >> 64;
-        __uint128_t bb = (product << 32) >> 96;
-        __uint128_t aa = product >> 96;
-        return mod_sub(mod_sub(mod_add(cc, bb << 32), bb), aa);
-    } else {
-        static_assert(false, "Unsupported type for mod_mul");
-    }
-}
-
 
 template <typename T>
 inline T bit_reverse(T x, size_t bits) {
@@ -109,8 +113,8 @@ inline T bit_reverse(T x, size_t bits) {
 
 template <typename T>
 void ntt(std::vector<T>& a, bool invert) {
-    const T p = T::PRIME;
-    const T root = T::ROOT;
+    const T p = PRIME<T>();
+    const T root = ROOT<T>();
     const size_t n = a.size();
     const size_t bits = static_cast<size_t>(std::log2(n));
     assert((n & (n - 1)) == 0 && "Length of input array must be a power of 2");
@@ -128,7 +132,7 @@ void ntt(std::vector<T>& a, bool invert) {
         : mod_pow(root, (p - 1) / n);
 
     for (size_t len = 2; len <= n; len <<= 1) {
-        T wlen = mod_pow(root_pow, n / len);
+        T wlen = mod_pow(root, static_cast<T>(n / len));
         for (size_t i = 0; i < n; i += len) {
             T w = 1;
             for (size_t j = 0; j < len / 2; ++j) {
@@ -142,7 +146,7 @@ void ntt(std::vector<T>& a, bool invert) {
     }
 
     if (invert) {
-        T n_inv = mod_pow(n, p - 2);
+        T n_inv = mod_pow(static_cast<T>(n), p - 2);
         for (auto& x : a) {
             x = mod_mul(x, n_inv);
         }
@@ -157,7 +161,7 @@ template <typename T>
 void matrix_ntt_parallel(std::vector<std::vector<std::vector<T>>>& a, bool invert) {
     // Apply NTT to all elements in parallel
     for (auto& row : a) {
-        std::for_each(std::execution::par, row.begin(), row.end(), [&](std::vector<T>& x) {
+        std::for_each( row.begin(), row.end(), [&](std::vector<T>& x) {
             ntt(x, invert);
         });
     }
@@ -203,6 +207,7 @@ void test_ntt_inverse() {
 
     // Verify that the data matches the original
     assert(data == original_data && "NTT followed by inverse NTT should return the original data");
+    std::cout << "NTT and inverse NTT test passed!" << std::endl;
 }
 
 

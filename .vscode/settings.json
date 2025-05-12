@@ -76,6 +76,7 @@
         "__verbose_abort": "cpp",
         "execution": "cpp",
         "__tree": "cpp",
-        "memory_resource": "cpp"
+        "memory_resource": "cpp",
+        "cupolyfinder.C": "cpp"
     }
 }
