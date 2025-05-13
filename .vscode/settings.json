@@ -77,6 +77,12 @@
         "execution": "cpp",
         "__tree": "cpp",
         "memory_resource": "cpp",
-        "cupolyfinder.C": "cpp"
+        "cupolyfinder.C": "cpp",
+        "codecvt": "cpp",
+        "future": "cpp",
+        "map": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "set": "cpp"
     }
 }

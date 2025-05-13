@@ -65,6 +65,39 @@ std::vector<std::vector<std::vector<T>>> poly_mat_mul_naive(
     
 }
 
+template<typename T>
+std::vector<T> poly_mul_fft(const std::vector<T>& p1, const std::vector<T>& p2) {
+    size_t n = p1.size();
+    size_t m = p2.size();
+    size_t nlenres = n + m - 1;
+    // find next highest power of two
+    size_t nlenres_adj = 1;
+    while (nlenres_adj < nlenres) {
+        nlenres_adj <<= 1;
+    }
+    // pad with zeros
+    std::vector<T> fa(nlenres_adj, T(0));
+    std::vector<T> fb(nlenres_adj, T(0));
+    std::copy(p1.begin(), p1.end(), fa.begin());
+    std::copy(p2.begin(), p2.end(), fb.begin());
+    // perform ntt
+    auto start = high_resolution_clock::now();
+    ntt(fa, false);
+    ntt(fb, false);
+    auto durationntt = high_resolution_clock::now() - start;
+    // multiply
+    std::vector<T> fresult(nlenres_adj, T(0));
+    for (size_t i = 0; i < nlenres_adj; ++i) {
+        fresult[i] = mod_mul(fa[i], fb[i]);
+    }
+    // perform inverse ntt
+    start = high_resolution_clock::now();
+    ntt(fresult, true);
+    auto durationmul = high_resolution_clock::now() - start;
+    // resize result
+    fresult.resize(nlenres);
+    return fresult;
+}
 
 
 static mutex NTT_TIME_MUTEX;
@@ -116,21 +149,36 @@ vector<vector<vector<T>>> poly_mat_mul_fft(const vector<vector<vector<T>>>& a, c
     auto durationntt = high_resolution_clock::now() - start;
 
     start = high_resolution_clock::now();
-    vector<future<void>> futures;
+    // multiply
     for (size_t i = 0; i < m; ++i) {
-        futures.push_back(async(launch::async, [&, i]() {
-            for (size_t j = 0; j < k; ++j) {
-                for (size_t r = 0; r < n; ++r) {
-                    for (size_t l = 0; l < nlenres_adj; ++l) {
-                        fresult[i][j][l] += fa[i][r][l] * fb[r][j][l];
-                    }
+        for (size_t j = 0; j < k; ++j) {
+            for (size_t r = 0; r < n; ++r) {
+                for (size_t l = 0; l < nlenres_adj; ++l) {
+                    fresult[i][j][l] = mod_add(fresult[i][j][l],mod_mul(fa[i][r][l], fb[r][j][l]));
                 }
             }
-        }));
+        }
     }
-    for (auto& fut : futures) {
-        fut.get();
-    }
+
+
+
+
+
+    // vector<future<void>> futures;
+    // for (size_t i = 0; i < m; ++i) {
+    //     futures.push_back(async(launch::async, [&, i]() {
+    //         for (size_t j = 0; j < k; ++j) {
+    //             for (size_t r = 0; r < n; ++r) {
+    //                 for (size_t l = 0; l < nlenres_adj; ++l) {
+    //                     fresult[i][j][l] += fa[i][r][l] * fb[r][j][l];
+    //                 }
+    //             }
+    //         }
+    //     }));
+    // }
+    // for (auto& fut : futures) {
+    //     fut.get();
+    // }
     auto durationmul = high_resolution_clock::now() - start;
 
     start = high_resolution_clock::now();
@@ -173,6 +221,73 @@ vector<vector<vector<T>>> poly_mat_mul_fft(const vector<vector<vector<T>>>& a, c
     return fresult;
 }
 
+
+
+
+template <typename T>
+vector<vector<vector<T>>> poly_mat_mul_fft_red(
+    const vector<vector<vector<T>>>& a,
+    const vector<vector<vector<T>>>& b,
+    T reducetoprime,
+    size_t b_start_deg,
+    size_t b_end_deg) {
+    
+    // Perform FFT-based polynomial matrix multiplication
+    auto red = poly_mat_mul_fft(a, b, b_start_deg, b_end_deg);
+
+    // Reduce the result modulo the smaller prime
+    size_t n = red.size();
+    for (size_t i = 0; i < n; ++i) {
+        size_t m = red[i].size();
+        for (size_t j = 0; j < m; ++j) {
+            size_t k = red[i][j].size();
+            for (size_t l = 0; l < k; ++l) {
+                red[i][j][l] = red[i][j][l] % reducetoprime;
+            }
+        }
+    }
+
+    return red;
+}
+
+
+
+
+
+
+//********* Test code */
+
+
+void test_poly_mul_naive_vs_fft() {
+    using T = uint64_t; // Use 64-bit unsigned integer type
+    T p = PRIME<T>(); // A large prime modulus
+    size_t poly_len1 = 5, poly_len2 = 4;
+
+    // Initialize random polynomials
+    std::vector<T> poly1(poly_len1), poly2(poly_len2);
+    for (size_t i = 0; i < poly_len1; ++i) {
+        poly1[i] = static_cast<T>(rand()) % p;
+    }
+    for (size_t i = 0; i < poly_len2; ++i) {
+        poly2[i] = static_cast<T>(rand()) % p;
+    }
+
+    // Compute results using both methods
+    auto result_naive = poly_mul_naive(poly1, poly2, p);
+    auto result_fft = poly_mul_fft(poly1, poly2);
+
+    // Compare results
+    assert(result_naive.size() == result_fft.size());
+    for (size_t i = 0; i < result_naive.size(); ++i) {
+        if (result_naive[i] != result_fft[i]) {
+            std::cerr << "Mismatch at index " << i << ": naive=" << result_naive[i]
+                      << ", fft=" << result_fft[i] << std::endl;
+            assert(false);
+        }
+    }
+
+    std::cout << "Test passed: poly_mul_naive and poly_mul_fft agree." << std::endl;
+}
 
 
 
