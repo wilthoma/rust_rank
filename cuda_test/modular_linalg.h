@@ -30,6 +30,25 @@ struct DMatrix {
         return data[i * cols + j];
     }
 
+    // function to get i-th row
+    std::vector<T> row(size_t i) const {
+        if (i >= rows) {
+            throw std::out_of_range("Row index out of range");
+        }
+        return std::vector<T>(data.begin() + i * cols, data.begin() + (i + 1) * cols);
+    }
+    // function to get j-th column
+    std::vector<T> col(size_t j) const {
+        if (j >= cols) {
+            throw std::out_of_range("Column index out of range");
+        }
+        std::vector<T> col(rows);
+        for (size_t i = 0; i < rows; ++i) {
+            col[i] = (*this)(i, j);
+        }
+        return col;
+    }
+
     void print() const {
         for (size_t i = 0; i < rows; ++i) {
             for (size_t j = 0; j < cols; ++j) {
@@ -41,6 +60,28 @@ struct DMatrix {
     }
     
 };
+
+template <typename T>
+DMatrix<T> modular_mat_mul(const DMatrix<T>& a, const DMatrix<T>& b, T p) {
+    if (a.cols != b.rows) {
+        throw std::invalid_argument("Matrix dimensions do not match for multiplication");
+    }
+    size_t m = a.rows;
+    size_t n = a.cols;
+    size_t k = b.cols;
+
+    DMatrix<T> result(m, k);
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < k; ++j) {
+            T sum = 0;
+            for (size_t l = 0; l < n; ++l) {
+                sum = (sum + a(i, l) * b(l, j)) % p;
+            }
+            result(i, j) = sum;
+        }
+    }
+    return result;
+}
 
 // Helper function to compute modular inverse
 template <typename T>
@@ -187,6 +228,7 @@ T modular_determinant(DMatrix<T> mat, T p) {
 
     return det;
 }
+
 
 
 template <typename T>

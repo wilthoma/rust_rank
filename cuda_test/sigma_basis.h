@@ -78,25 +78,25 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> M_Basi
     std::sort(delta.begin(), delta.end(), std::greater<int64_t>());
 
     // Create permutation matrix pi_m
-    std::vector<std::vector<S>> pi_m(m, std::vector<S>(m, S(0)));
+    DMatrix<S> pi_m(m, m);
     for (std::size_t i = 0; i < m; ++i) {
-        pi_m[i][perm[i]] = S(1);
+        pi_m(i,perm[i]) = S(1);
     }
 
     // Construct Delta matrix
-    std::vector<std::vector<S>> Delta(m, std::vector<S>(n, S(0)));
+    DMatrix<S> Delta(m, n);
     for (std::size_t i = 0; i < m; ++i) {
         for (std::size_t j = 0; j < n; ++j) {
-            Delta[i][j] = G[i][j][0];
+            Delta(i,j) = G[i][j][0];
         }
     }
     Delta = modular_mat_mul(pi_m, Delta, prime);
 
     // Augment Delta into Delta_aug
-    std::vector<std::vector<S>> Delta_aug(m, std::vector<S>(m, S(0)));
+    DMatrix<S> Delta_aug(m, m);
     for (std::size_t i = 0; i < m; ++i) {
         for (std::size_t j = 0; j < n; ++j) {
-            Delta_aug[i][j] = Delta[i][j];
+            Delta_aug(i,j) = Delta(i,j);
         }
     }
 
@@ -105,14 +105,15 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> M_Basi
     auto Linv = matrix_inverse(L, prime);
 
     // Construct D1 and Dx
-    std::vector<std::vector<S>> D1(m, std::vector<S>(m, S(0)));
-    std::vector<std::vector<S>> Dx(m, std::vector<S>(m, S(0)));
+    DMatrix<S> D1(m, m);
+    DMatrix<S> Dx(m, m);
     for (std::size_t i = 0; i < m; ++i) {
-        bool is_zero_row = std::all_of(S_mat[i].begin(), S_mat[i].end(), [](S x) { return x == S(0); });
+        auto row = S_mat.row(i);
+        bool is_zero_row = std::all_of(row.begin(), row.end(), [](S x) { return x == S(0); });
         if (is_zero_row) {
-            D1[i][i] = S(1);
+            D1(i,i) = S(1);
         } else {
-            Dx[i][i] = S(1);
+            Dx(i,i) = S(1);
         }
     }
 
@@ -124,14 +125,14 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> M_Basi
     std::vector<std::vector<std::vector<S>>> ret(m, std::vector<std::vector<S>>(m, std::vector<S>(2, S(0))));
     for (std::size_t i = 0; i < m; ++i) {
         for (std::size_t j = 0; j < m; ++j) {
-            ret[i][j][0] = M1[i][j];
-            ret[i][j][1] = Mx[i][j];
+            ret[i][j][0] = M1(i,j);
+            ret[i][j][1] = Mx(i,j);
         }
     }
 
     // Update delta
     for (std::size_t i = 0; i < m; ++i) {
-        if (Dx[i][i] == S(1)) {
+        if (Dx(i,i) == S(1)) {
             delta[i] -= 1;
         }
     }
@@ -158,18 +159,18 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> _PM_Ba
     } else {
         auto [MM, mumu] = _PM_Basis(G, d / 2, delta, seqprime, progress);
 
-        auto GG = poly_mat_mul_red_adaptive(MM, G, seqprime, 0, d + 1);
+        auto GG = poly_mat_mul_fft_red(MM, G, seqprime, 0, d + 1);
         shift_trunc_in(GG, d / 2, d / 2);
 
         auto [MMM, mumumu] = _PM_Basis(GG, d / 2, mumu, seqprime, progress);
-        return {poly_mat_mul_red_adaptive(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
+        return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
     }
 }
 
 
 template <typename S, typename T>
 std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> PM_Basis(
-    const std::vector<std::vector<T>>& seq, 
+    std::vector<std::vector<T>>& seq, 
     std::size_t d, 
     T seqprime) 
 {
@@ -243,11 +244,18 @@ void analyze_min_generators(const std::vector<std::vector<std::vector<S>>>& poly
     }
 
     // Estimate matrix rank
-    auto modular_rank = [](const std::vector<std::vector<S>>& mat, S prime) {
-        return modular_matrix_rank(mat, prime); // Assuming modular_matrix_rank is implemented elsewhere
+    auto tmodular_rank = [](const std::vector<std::vector<S>>& mat, S prime) {
+        DMatrix<S> dmat(mat.size(), mat[0].size());
+        for (std::size_t i = 0; i < mat.size(); ++i) {
+            for (std::size_t j = 0; j < mat[i].size(); ++j) {
+                dmat(i, j) = mat[i][j];
+            }
+        }
+
+        return modular_rank(dmat, prime); // Assuming modular_matrix_rank is implemented elsewhere
     };
 
-    std::size_t matrank = n * (k - 3) + modular_rank(poly[k - 1], p) + modular_rank(poly[0], p);
+    std::size_t matrank = n * (k - 3) + tmodular_rank(poly[k - 1], p) + tmodular_rank(poly[0], p);
     std::cout << "Estimated matrix rank: " << matrank << std::endl;
 }
 
