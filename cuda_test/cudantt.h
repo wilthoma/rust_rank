@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <cmath>
 #include <iostream>
-
+#include "modular_linalg.h"
 #include "ntt.h"
 
 using u64 = uint64_t;
@@ -16,31 +16,52 @@ using u64 = uint64_t;
 const u64 p = 2305843009146585089ULL;     // = 15 * 2^27 + 1, 31-bit prime
 const u64 root = 3;          // primitive root modulo p
 
-__device__ __forceinline__ u64 mod_mul(u64 a, u64 b, u64 p) {
-    u64 lo = a * b;
-    u64 hi = __umul64hi(a, b);
-    u64 res;
 
-    asm("{\n\t"
-        ".reg .u64 t1, t2;\n\t"
-        "mul.lo.u64 t1, %1, %2;\n\t"
-        "mul.hi.u64 t2, %1, %2;\n\t"
-        "mad.wide.u32 %0, 0, 0, t1;\n\t"
-        "rem.u64 %0, %0, %3;\n\t"
-        "}\n"
-        : "=l"(res)
-        : "l"(a), "l"(b), "l"(p));
-
-    return res;
-}
-
-__device__ u64 mod_add(u64 a, u64 b, u64 p) {
+__device__ u64 dmod_add(u64 a, u64 b, u64 p) {
     u64 s = a + b;
     return s >= p ? s - p : s;
 }
 
-__device__ u64 mod_sub(u64 a, u64 b, u64 p) {
+__device__ u64 dmod_sub(u64 a, u64 b, u64 p) {
     return a >= b ? a - b : p + a - b;
+}
+
+__device__ __forceinline__ u64 dmod_mul(u64 a, u64 b, u64 p) {
+
+    u64 lo = a * b;
+    u64 hi = __umul64hi(a, b);
+    u64 res;
+
+    //__uint128_t product = static_cast<__uint128_t>(a) * b;
+    u64 cc = (lo << 3) >> 3; // lowest 61 bits 
+    u64 bbh = (hi << 32) >> 29; // bits 64-95
+    u64 bbl = lo >> 61; // bits 61-63
+    u64 bb = bbh | bbl; // bits 61-95
+    u64 aa = hi >> 32; // bits 96-127
+    return dmod_add(dmod_sub(dmod_add(cc, bb << 26,p), bb,p), dmod_sub(dmod_add(aa << 26, p - aa,p), aa << 35,p),p);
+
+
+    // uint64_t cc = static_cast<uint64_t>((product << 67) >> 67); // lowest 61 bits
+    // uint64_t bb = static_cast<uint64_t>((product << 32) >> 93); // bits 61-95
+    // uint64_t aa = static_cast<uint64_t>(product >> 96);         // bits 96-127
+    // return mod_add(mod_sub(mod_add(cc, bb << 26), bb), mod_sub(mod_add(aa << 26, PRIME<T>() - aa), aa << 35));
+
+
+    // u64 lo = a * b;
+    // u64 hi = __umul64hi(a, b);
+    // u64 res;
+
+    // asm("{\n\t"
+    //     ".reg .u64 t1, t2;\n\t"
+    //     "mul.lo.u64 t1, %1, %2;\n\t"
+    //     "mul.hi.u64 t2, %1, %2;\n\t"
+    //     "mad.wide.u32 %0, 0, 0, t1;\n\t"
+    //     "rem.u64 %0, %0, %3;\n\t"
+    //     "}\n"
+    //     : "=l"(res)
+    //     : "l"(a), "l"(b), "l"(p));
+
+    // return res;
 }
 
 __global__ void bit_reverse_kernel(u64* data, u64 n, u64 logn) {
@@ -67,33 +88,35 @@ __global__ void ntt_stage_kernel(u64* data, const u64* twiddles, u64 n, u64 step
     u64 w = twiddles[(n / m) * (tid % step)];
 
     u64 u = data[i];
-    u64 v = mod_mul(data[j], w, p);
+    u64 v = dmod_mul(data[j], w, p);
 
-    data[i] = mod_add(u, v, p);
-    data[j] = mod_sub(u, v, p);
+    data[i] = dmod_add(u, v, p);
+    data[j] = dmod_sub(u, v, p);
 }
 
 __global__ void scale_kernel(u64* data, u64 n, u64 ninv, u64 p) {
     u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < n) {
-        data[tid] = mod_mul(data[tid], ninv, p);
+        data[tid] = dmod_mul(data[tid], ninv, p);
     }
 }
 
-u64 modinv(u64 a, u64 p) {
-    u64 t = 0, newt = 1;
-    u64 r = p, newr = a;
 
-    while (newr != 0) {
-        u64 q = r / newr;
-        u64 tmp = newt;
-        newt = t - q * newt; t = tmp;
 
-        tmp = newr;
-        newr = r - q * newr; r = tmp;
-    }
-    return (t + p) % p;
-}
+// u64 modinv(u64 a, u64 p) {
+//     u64 t = 0, newt = 1;
+//     u64 r = p, newr = a;
+
+//     while (newr != 0) {
+//         u64 q = r / newr;
+//         u64 tmp = newt;
+//         newt = t - q * newt; t = tmp;
+
+//         tmp = newr;
+//         newr = r - q * newr; r = tmp;
+//     }
+//     return (t + p) % p;
+// }
 
 void generate_twiddles(std::vector<u64>& tw, u64 n, u64 root, u64 p, bool inverse = false) {
     u64 r = inverse ? modinv(root, p) : root;

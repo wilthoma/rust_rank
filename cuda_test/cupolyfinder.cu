@@ -11,6 +11,7 @@
 #include "modular_linalg.h"
 #include "sigma_basis.h"
 #include "wdmfiles.h"
+#include "cudantt.h"
 
 
 using namespace std;
@@ -23,7 +24,7 @@ int main(int argc, char** argv) {
     bool runtests = false;
 
     app.add_option("filename", wdm_filename, "WDM file to load")->required();
-    app.add_flag("-t,--runtests", runtests, "Run tests");
+    app.add_flag("-t,--test", runtests, "Run tests");
     CLI11_PARSE(app, argc, argv);
     
     if (runtests) {
@@ -34,6 +35,10 @@ int main(int argc, char** argv) {
         test_poly_mul_naive_vs_fft();
         test_poly_mat_mul_naive_vs_fft();
         test_runall_modular_linalg();
+        
+        test_ntt_cuda_inv();
+        test_ntt_cuda_same_as_ntt();
+
         return 0;
     }
 
