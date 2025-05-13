@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include "include/CLI11.hpp"
 #include "ntt.h"
+#include "poly_mat_mul.h" 
 
 
 using namespace std;
@@ -23,6 +24,9 @@ int main(int argc, char** argv) {
 
     cout << "Running tests..." << endl;
     test_ntt_inverse();
+    test_modmul_agreement();
+    // benchmark_ntt_u64_vs_ntt_u128();
+    test_poly_mat_mul_naive_vs_fft();
 
 
     return 0;

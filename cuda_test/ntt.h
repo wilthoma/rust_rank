@@ -12,6 +12,9 @@
 #include <random>
 #include <cassert>
 #include <iostream>
+#include <bit>
+#include <bitset>
+
 
 
 template <typename T>
@@ -116,7 +119,7 @@ void ntt(std::vector<T>& a, bool invert) {
     const T p = PRIME<T>();
     const T root = ROOT<T>();
     const size_t n = a.size();
-    const size_t bits = static_cast<size_t>(std::log2(n));
+    const size_t bits = static_cast<size_t>(std::countr_zero(n));
     assert((n & (n - 1)) == 0 && "Length of input array must be a power of 2");
 
     // Bit reversal permutation
@@ -132,7 +135,7 @@ void ntt(std::vector<T>& a, bool invert) {
         : mod_pow(root, (p - 1) / n);
 
     for (size_t len = 2; len <= n; len <<= 1) {
-        T wlen = mod_pow(root, static_cast<T>(n / len));
+        T wlen = mod_pow(root_pow, static_cast<T>(n / len));
         for (size_t i = 0; i < n; i += len) {
             T w = 1;
             for (size_t j = 0; j < len / 2; ++j) {
@@ -211,7 +214,101 @@ void test_ntt_inverse() {
 }
 
 
+void test_modmul_agreement() {
+    using T = uint64_t;
+
+    std::vector<std::pair<T, T>> test_cases = {
+        {static_cast<T>(PRIME<uint32_t>()), static_cast<T>(ROOT<uint32_t>())},
+        {static_cast<T>(PRIME<uint64_t>()), static_cast<T>(ROOT<uint64_t>())},
+        {static_cast<T>(PRIME<__uint128_t>()), static_cast<T>(ROOT<__uint128_t>())},
+    };
+
+    std::random_device rd;
+    std::mt19937_64 rng(rd());
+
+    for (const auto& [prime, root] : test_cases) {
+        std::uniform_int_distribution<T> dist(0, prime - 1);
+
+        for (int i = 0; i < 1000; ++i) {
+            T x = dist(rng);
+            T y = dist(rng);
+
+            T expected = static_cast<T>((static_cast<__uint128_t>(x) * y) % prime);
+            T result;
+
+            if (prime == PRIME<uint32_t>()) {
+                result = mod_mul(static_cast<uint32_t>(x), static_cast<uint32_t>(y));
+            } else if (prime == PRIME<uint64_t>()) {
+                result = mod_mul(static_cast<uint64_t>(x), static_cast<uint64_t>(y));
+            } else if (prime == PRIME<__uint128_t>()) {
+                result = static_cast<T>(mod_mul(static_cast<__uint128_t>(x), static_cast<__uint128_t>(y)));
+            } else {
+                throw std::runtime_error("Unsupported type");
+            }
+
+            assert(result == expected && "mod_mul failed");
+        }
+    }
+
+    std::cout << "mod_mul agreement test passed!" << std::endl;
+}
 
 
+#include <chrono>
+
+void benchmark_ntt_u64_vs_ntt_u128() {
+    using T64 = uint64_t;
+    using T128 = __uint128_t;
+
+    const T64 p_u64 = PRIME<T64>(); // A prime modulus for uint64_t
+    const T64 root_u64 = ROOT<T64>(); // A primitive root modulo p_u64
+    const size_t len = 1 << 21; // Must be a power of two
+
+    const T128 p_u128 = PRIME<T128>(); // A prime modulus for __uint128_t
+    const T128 root_u128 = ROOT<T128>(); // A primitive root modulo p_u128
+
+    // Generate random data
+    auto data_u64 = generate_random_data<T64>(len, p_u64 - 1);
+    std::vector<T128> data_u128(data_u64.begin(), data_u64.end());
+
+    // Benchmark NTT<uint64_t>
+    auto start_u64 = std::chrono::high_resolution_clock::now();
+    ntt(data_u64, false);
+    auto duration_u64 = std::chrono::high_resolution_clock::now() - start_u64;
+
+    // Benchmark NTT<__uint128_t>
+    auto start_u128 = std::chrono::high_resolution_clock::now();
+    ntt(data_u128, false);
+    auto duration_u128 = std::chrono::high_resolution_clock::now() - start_u128;
+
+    std::cout << "NTT<uint64_t> took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(duration_u64).count()
+              << " ms, NTT<__uint128_t> took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(duration_u128).count()
+              << " ms" << std::endl;
+
+    // Again
+
+    // Benchmark NTT<uint64_t> (inverse)
+    start_u64 = std::chrono::high_resolution_clock::now();
+    ntt(data_u64, true);
+    duration_u64 = std::chrono::high_resolution_clock::now() - start_u64;
+
+    // Benchmark NTT<__uint128_t> (inverse)
+    start_u128 = std::chrono::high_resolution_clock::now();
+    ntt(data_u128, true);
+    duration_u128 = std::chrono::high_resolution_clock::now() - start_u128;
+
+    std::cout << "Inverse NTT<uint64_t> took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(duration_u64).count()
+              << " ms, Inverse NTT<__uint128_t> took "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(duration_u128).count()
+              << " ms" << std::endl;
+
+    // Ensure the results are valid (not strictly necessary for benchmarking)
+    std::vector<T64> original_data_u64(data_u128.begin(), data_u128.end());
+    assert(data_u64 == original_data_u64 && "NTT<uint64_t> and NTT<__uint128_t> results should match");
+    std::cout << "Test passed: NTT and inverse NTT results match!" << std::endl;
+}
 
 #endif // NTT_H
