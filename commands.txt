@@ -19,6 +19,10 @@ module load modules/EasyBuild && module load GCC/13.3.0 && cd prog/tmp3/rust_ran
 
 /usr/local/cuda/bin/nvcc cuvseq_int.cu -o cuvseq_int -gencode=arch=compute_89,code=sm_89
 
+/usr/local/cuda/bin/nvcc cupolyfinder.cu -o cupolyfinder -gencode=arch=compute_89,code=sm_89
+
+/usr/local/cuda/bin/nvcc cupolyfinder.cu -o cupolyfinder -gencode=arch=compute_89,code=sm_89 -x c++ -ccbin g++ -std=c++20 
+
 
 ./cuvseq_int /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri17_11.txt -v4 -N17000000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri17_11_gpu.wdm -o -s8000
 

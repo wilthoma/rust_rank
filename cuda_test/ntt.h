@@ -8,7 +8,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include <execution>
+// #include <execution>
 #include <random>
 #include <cassert>
 #include <iostream>
@@ -119,7 +119,8 @@ void ntt(std::vector<T>& a, bool invert) {
     const T p = PRIME<T>();
     const T root = ROOT<T>();
     const size_t n = a.size();
-    const size_t bits = static_cast<size_t>(std::countr_zero(n));
+    const size_t bits = static_cast<size_t>(std::log2(n));
+    // const size_t bits = static_cast<size_t>(std::countr_zero(n));
     assert((n & (n - 1)) == 0 && "Length of input array must be a power of 2");
 
     // Bit reversal permutation

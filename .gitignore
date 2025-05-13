@@ -11,6 +11,17 @@ data/*
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
+cuda_test/*.wdm
+cuda_test/.nfs*
+
+cuda_test/cupretest
+cuda_test/cuda_test
+cuda_test/cuvseq
+cuda_test/cuvseq_int
+cuda_test/cupolyfinder
+cuda_test/matrix.txt
+
+cutest
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

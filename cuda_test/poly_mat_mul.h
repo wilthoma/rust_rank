@@ -3,13 +3,13 @@
 
 
 #include <vector>
-#include <mutex>
+// #include <mutex>
 #include <chrono>
 #include <iostream>
 #include <algorithm>
 #include <numeric>
-#include <thread>
-#include <future>
+// #include <thread>
+// #include <future>
 #include <cstdint>
 #include <stdexcept>
 #include <cassert>
@@ -100,10 +100,10 @@ std::vector<T> poly_mul_fft(const std::vector<T>& p1, const std::vector<T>& p2) 
 }
 
 
-static mutex NTT_TIME_MUTEX;
-static mutex MUL_TIME_MUTEX;
-static mutex NTT_TIME_L_MUTEX;
-static mutex MUL_TIME_L_MUTEX;
+// static mutex NTT_TIME_MUTEX;
+// static mutex MUL_TIME_MUTEX;
+// static mutex NTT_TIME_L_MUTEX;
+// static mutex MUL_TIME_L_MUTEX;
 
 static duration<double> NTT_TIME = duration<double>::zero();
 static duration<double> MUL_TIME = duration<double>::zero();
@@ -185,32 +185,32 @@ vector<vector<vector<T>>> poly_mat_mul_fft(const vector<vector<vector<T>>>& a, c
     matrix_ntt_parallel(fresult, true);
     durationntt += high_resolution_clock::now() - start;
 
-    {
-        lock_guard<mutex> lock(MUL_TIME_MUTEX);
-        MUL_TIME += duration_cast<duration<double>>(durationmul);
-    }
-    {
-        lock_guard<mutex> lock(NTT_TIME_MUTEX);
-        NTT_TIME += duration_cast<duration<double>>(durationntt);
-    }
+    // {
+    //     lock_guard<mutex> lock(MUL_TIME_MUTEX);
+    //     MUL_TIME += duration_cast<duration<double>>(durationmul);
+    // }
+    // {
+    //     lock_guard<mutex> lock(NTT_TIME_MUTEX);
+    //     NTT_TIME += duration_cast<duration<double>>(durationntt);
+    // }
 
-    if (duration_cast<milliseconds>(durationmul).count() > 10 || duration_cast<milliseconds>(durationntt).count() > 10) {
-        {
-            lock_guard<mutex> lock(MUL_TIME_L_MUTEX);
-            MUL_TIME_L += duration_cast<duration<double>>(durationmul);
-        }
-        {
-            lock_guard<mutex> lock(NTT_TIME_L_MUTEX);
-            NTT_TIME_L += duration_cast<duration<double>>(durationntt);
-        }
-    }
+    // if (duration_cast<milliseconds>(durationmul).count() > 10 || duration_cast<milliseconds>(durationntt).count() > 10) {
+    //     {
+    //         lock_guard<mutex> lock(MUL_TIME_L_MUTEX);
+    //         MUL_TIME_L += duration_cast<duration<double>>(durationmul);
+    //     }
+    //     {
+    //         lock_guard<mutex> lock(NTT_TIME_L_MUTEX);
+    //         NTT_TIME_L += duration_cast<duration<double>>(durationntt);
+    //     }
+    // }
 
-    if (duration_cast<milliseconds>(durationmul).count() > 200 || duration_cast<milliseconds>(durationntt).count() > 200) {
-        cout << "\nDuration (Multiplication): " << duration_cast<milliseconds>(durationmul).count()
-             << "ms (total " << MUL_TIME.count() << "s, " << MUL_TIME_L.count() << "s), Duration (NTT): "
-             << duration_cast<milliseconds>(durationntt).count() << "ms (total " << NTT_TIME.count()
-             << "s, " << NTT_TIME_L.count() << "s)" << endl;
-    }
+    // if (duration_cast<milliseconds>(durationmul).count() > 200 || duration_cast<milliseconds>(durationntt).count() > 200) {
+    //     cout << "\nDuration (Multiplication): " << duration_cast<milliseconds>(durationmul).count()
+    //          << "ms (total " << MUL_TIME.count() << "s, " << MUL_TIME_L.count() << "s), Duration (NTT): "
+    //          << duration_cast<milliseconds>(durationntt).count() << "ms (total " << NTT_TIME.count()
+    //          << "s, " << NTT_TIME_L.count() << "s)" << endl;
+    // }
 
     for (size_t i = 0; i < m; ++i) {
         for (size_t j = 0; j < k; ++j) {
