@@ -288,25 +288,6 @@ void ntt_cuda_colwise(std::vector<u64>& h_data, int n_cols, bool inverse = false
     // const u64 w = inverse ? mod_pow(root, p - 2) : root;
     const u64 w = inverse ? mod_pow(root, p - 1 - (p - 1) / n) : mod_pow(root, (p - 1) / n);
 
-    // T root_pow = invert
-    //     ? mod_pow(root, p - 1 - (p - 1) / n)
-    //     : mod_pow(root, (p - 1) / n);
-
-    // for (size_t len = 2; len <= n; len <<= 1) {
-    //     T wlen = mod_pow(root_pow, static_cast<T>(n / len));
-    //     for (size_t i = 0; i < n; i += len) {
-    //         T w = 1;
-    //         for (size_t j = 0; j < len / 2; ++j) {
-    //             T u = a[i + j];
-    //             T v = mod_mul(a[i + j + len / 2],w);
-    //             a[i + j] = mod_add(u,v);
-    //             a[i + j + len / 2] = mod_sub(u,v);
-    //             w = mod_mul(w, wlen);
-    //         }
-    //     }
-    // }
-
-
     // Device memory
     u64 *d_data, *d_twiddles;
     CHECK_CUDA(cudaMalloc(&d_data, nn * sizeof(u64)));
@@ -315,7 +296,7 @@ void ntt_cuda_colwise(std::vector<u64>& h_data, int n_cols, bool inverse = false
     CHECK_CUDA(cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64))); // max needed is n/2
 
     // Bit-reversal permutation
-    launch_bit_reverse_kernel(d_data, n);  // assumed to be correct
+    launch_bit_reverse_kernel_colwise(d_data, n, n_cols); 
 
     // NTT stages
     for (u64 step = 1; step < n; step *= 2) {
@@ -356,6 +337,66 @@ void ntt_cuda_colwise(std::vector<u64>& h_data, int n_cols, bool inverse = false
     cudaFree(d_twiddles);
 }
 
+// the data represents an n x nr_columns matrix, ntt operates column-wise
+// the data is assumed to be in row-major order
+void ntt_cuda_colwise_gpu(u64* d_data, int n_rows, int n_cols, bool inverse = false) {
+    u64 n = n_rows;
+    u64 nn = n_rows*n_cols;
+    assert((n & (n - 1)) == 0); // Ensure n is a power of 2
+
+    const u64 inv_n = mod_pow(n, p - 2);  // n⁻¹ mod p
+    // std::cout << n << " ..inverse... " << inv_n<< std::endl;
+    // const u64 w = inverse ? mod_pow(root, p - 2) : root;
+    const u64 w = inverse ? mod_pow(root, p - 1 - (p - 1) / n) : mod_pow(root, (p - 1) / n);
+
+    // Device memory
+    u64 *d_twiddles;
+    //CHECK_CUDA(cudaMalloc(&d_data, nn * sizeof(u64)));
+    //CHECK_CUDA(cudaMemcpy(d_data, h_data.data(), nn * sizeof(u64), cudaMemcpyHostToDevice));
+
+    CHECK_CUDA(cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64))); // max needed is n/2
+
+    // Bit-reversal permutation
+    launch_bit_reverse_kernel_colwise(d_data, n, n_cols); 
+
+    // NTT stages
+    for (u64 step = 1; step < n; step *= 2) {
+        u64 m = step * 2;
+        u64 wm = mod_pow(w, n / m);
+
+        // Compute twiddles for this stage
+        std::vector<u64> stage_twiddles(step);
+        stage_twiddles[0] = 1;
+        for (u64 j = 1; j < step; ++j)
+            stage_twiddles[j] = (u128)stage_twiddles[j - 1] * wm % p;
+
+        CHECK_CUDA(cudaMemcpy(d_twiddles, stage_twiddles.data(), step * sizeof(u64), cudaMemcpyHostToDevice));
+
+        // Launch one thread per butterfly group of size 2*step
+        u64 threads_needed = n / (2 * step);
+        dim3 blockDim(32, 16);
+        dim3 gridDim((threads_needed + blockDim.x - 1) / blockDim.x,
+                    (n_cols + blockDim.y - 1) / blockDim.y);
+        // u64 threads_needed = n / (2 * step);
+        // u64 blocks = (threads_needed + 255) / 256;
+        // ntt_stage_kernel<<<blocks, 256>>>(d_data, d_twiddles, step, n, p); //CUCHECK
+        ntt_stage_kernel_colwise<<<gridDim, blockDim>>>(d_data, d_twiddles, step, n, n_cols, p); //CUCHECK
+        CHECK_CUDA(cudaDeviceSynchronize());
+    }
+
+    // Scale by n⁻¹ in inverse
+    if (inverse) {
+    // if (false){
+        u64 threads = (nn + 255) / 256;
+        // std::cout << "scaling by " << inv_n<< std::endl;
+        scale_kernel<<<threads, 256>>>(d_data, inv_n, nn, p);// CUCHECK
+        CHECK_CUDA(cudaDeviceSynchronize());
+    }
+
+    // CHECK_CUDA(cudaMemcpy(h_data.data(), d_data, nn * sizeof(u64), cudaMemcpyDeviceToHost));
+    // cudaFree(d_data);
+    cudaFree(d_twiddles);
+}
 
 void test_ntt_cuda_colwise_inv() {
     size_t n = 1 << 20; // e.g., 2^20 = 1 million

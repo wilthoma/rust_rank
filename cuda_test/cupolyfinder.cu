@@ -30,6 +30,9 @@ int main(int argc, char** argv) {
     
     if (runtests) {
         cout << "Running tests..." << endl;
+
+        // test_cuda_vmat_mul();
+
         test_ntt_inverse();
         test_modmul_agreement();
         // benchmark_ntt_u64_vs_ntt_u128();
@@ -42,9 +45,11 @@ int main(int argc, char** argv) {
         test_ntt_cuda_inv();
         test_ntt_cuda_same_as_ntt();
         test_cuda_poly_mul_methods();
-        
+
         test_ntt_cuda_colwise_inv();
         test_ntt_cuda_colwise_same_as_ntt();
+
+        test_cuda_matrix_poly_mul_methods();
         return 0;
     }
 
