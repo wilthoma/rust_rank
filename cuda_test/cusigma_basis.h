@@ -11,16 +11,18 @@
 #include "sigma_basis.h"
 
 
-
-std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> M_Basis2(
+// the input is a matrix G of size m x m/2
+// the output is the two DMatrices of size m x m (the constant coeff and x-coeff) and the new delta
+std::tuple<DMatrix<u64>, DMatrix<u64>, std::vector<int64_t>> M_Basis2(
     const DMatrix<u64>& G, 
     std::vector<int64_t> delta, 
     u64 prime) 
 {
-    std::size_t m = G.size();
-    assert(m > 0 && "Must have #rows > 0");
-    std::size_t n = G[0].size();
-    assert(m >= n && "Must have #rows >= #cols");
+    std::size_t m = G.rows;
+    std::size_t n = G.cols;
+    // assert(n > 0 && "Must have #rows > 0");
+    // std::size_t n = G[0].size();
+    // assert(m >= n && "Must have #rows >= #cols");
 
     // Sort delta in descending order and remember the permutation
     std::vector<std::size_t> perm(m);
@@ -31,22 +33,22 @@ std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> M_Ba
     std::sort(delta.begin(), delta.end(), std::greater<int64_t>());
 
     // Create permutation matrix pi_m
-    DMatrix<S> pi_m(m, m);
+    DMatrix<u64> pi_m(m, m);
     for (std::size_t i = 0; i < m; ++i) {
         pi_m(i,perm[i]) = 1;
     }
 
     // Construct Delta matrix
-    DMatrix<S> Delta(m, n);
-    for (std::size_t i = 0; i < m; ++i) {
-        for (std::size_t j = 0; j < n; ++j) {
-            Delta(i,j) = G[i][j][0];
-        }
-    }
-    Delta = modular_mat_mul(pi_m, Delta, prime);
+    DMatrix<u64> Delta(m, n);
+    // for (std::size_t i = 0; i < m; ++i) {
+    //     for (std::size_t j = 0; j < n; ++j) {
+    //         Delta(i,j) = G[i][j][0];
+    //     }
+    // }
+    Delta = modular_mat_mul(pi_m, G, prime);
 
     // Augment Delta into Delta_aug
-    DMatrix<S> Delta_aug(m, m);
+    DMatrix<u64> Delta_aug(m, m);
     for (std::size_t i = 0; i < m; ++i) {
         for (std::size_t j = 0; j < n; ++j) {
             Delta_aug(i,j) = Delta(i,j);
@@ -58,15 +60,15 @@ std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> M_Ba
     auto Linv = matrix_inverse(L, prime);
 
     // Construct D1 and Dx
-    DMatrix<S> D1(m, m);
-    DMatrix<S> Dx(m, m);
+    DMatrix<u64> D1(m, m);
+    DMatrix<u64> Dx(m, m);
     for (std::size_t i = 0; i < m; ++i) {
         auto row = S_mat.row(i);
-        bool is_zero_row = std::all_of(row.begin(), row.end(), [](S x) { return x == S(0); });
+        bool is_zero_row = std::all_of(row.begin(), row.end(), [](u64 x) { return x == 0; });
         if (is_zero_row) {
-            D1(i,i) = S(1);
+            D1(i,i) = 1;
         } else {
-            Dx(i,i) = S(1);
+            Dx(i,i) = 1;
         }
     }
 
@@ -75,22 +77,22 @@ std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> M_Ba
     auto Mx = modular_mat_mul(modular_mat_mul(Dx, Linv, prime), pi_m, prime);
 
     // Fill output matrix
-    std::vector<std::vector<std::vector<S>>> ret(m, std::vector<std::vector<S>>(m, std::vector<S>(2, S(0))));
-    for (std::size_t i = 0; i < m; ++i) {
-        for (std::size_t j = 0; j < m; ++j) {
-            ret[i][j][0] = M1(i,j);
-            ret[i][j][1] = Mx(i,j);
-        }
-    }
+    // std::vector<std::vector<std::vector<S>>> ret(m, std::vector<std::vector<S>>(m, std::vector<S>(2, S(0))));
+    // for (std::size_t i = 0; i < m; ++i) {
+    //     for (std::size_t j = 0; j < m; ++j) {
+    //         ret[i][j][0] = M1(i,j);
+    //         ret[i][j][1] = Mx(i,j);
+    //     }
+    // }
 
     // Update delta
     for (std::size_t i = 0; i < m; ++i) {
-        if (Dx(i,i) == S(1)) {
+        if (Dx(i,i) == 1) {
             delta[i] -= 1;
         }
     }
 
-    return {ret, delta};
+    return {M1, Mx, delta};
 }
 
 
@@ -140,17 +142,30 @@ std::vector<int64_t> _cuPM_Basis(
         return mumu;
     } else {
         u64* dout1;
-        CHECK_CUDA(cudaMalloc(&dout1, n * n * (d/2) * sizeof(u64)));
-        auto mumu = _PM_Basis(G, dout1, n, d / 2, delta, seqprime, progress);
+        CHECK_CUDA(cudaMalloc(&dout1, n * n * (d/2+1) * sizeof(u64)));
+        auto mumu = _cuPM_Basis(dG, dout1, n, d / 2, delta, seqprime, progress);
 
         u64* mul1;
         CHECK_CUDA(cudaMalloc(&mul1, n * n * (d/2) * sizeof(u64)));
         // auto GG = poly_mat_mul_fft_red(MM, G, seqprime, 0, d + 1);
-        poly_mat_mul_fft_red(MM, G, seqprime, 0, d + 1);
-        shift_trunc_in(GG, d / 2, d / 2);
+        cupoly_mat_mul_fft_gpu(dout1, dG, mul1, n, n, n/2, d/2+1, d/2, d/2, d/2);
+        modp_buffer(mul1, n * n * (d/2), seqprime);
+        // shift_trunc_in(GG, d / 2, d / 2);
 
-        auto [MMM, mumumu] = _PM_Basis(GG, d / 2, mumu, seqprime, progress);
-        return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
+        u64* dout2;
+        CHECK_CUDA(cudaMalloc(&dout2, n * n * (d/2+1) * sizeof(u64)));
+
+        auto mumumu = _cuPM_Basis(mul1, dout2, n, d / 2, mumu, seqprime, progress);
+
+        cupoly_mat_mul_fft_gpu(dout1, dout2, dRes, n, n, n, d/2+1, d/2+1, 0, d+1);
+        modp_buffer(dRes, n * n * (d+1), seqprime);
+
+        CHECK_CUDA(cudaFree(dout1));
+        CHECK_CUDA(cudaFree(mul1));
+        CHECK_CUDA(cudaFree(dout2));
+        
+        return mumumu;
+        // return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
     }
 }
 
@@ -189,7 +204,7 @@ std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> cuPM
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = i; j < n; ++j) {
             for (std::size_t k = 0; k < nlen; ++k) {
-                G[k*2*n*n+i*n+j] = static_cast<u64>(seq[ii][k])
+                G[k*2*n*n+i*n+j] = static_cast<u64>(seq[ii][k]);
                 G[k*2*n*n+j*n+i] = G[k*2*n*n+i*n+j];
                 // G[i][j][k] = static_cast<S>(seq[ii][k]);
                 // G[j][i][k] = G[i][j][k];

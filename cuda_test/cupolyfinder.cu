@@ -13,6 +13,7 @@
 #include "wdmfiles.h"
 #include "cudantt.h"
 #include "cupoly_mat_mul.h"
+#include "cusigma_basis.h"
 
 
 using namespace std;
@@ -78,7 +79,8 @@ int main(int argc, char** argv) {
     }
     thed /= 2;
 
-    auto [pmb, del] = PM_Basis<uint64_t, myint>(seq_list, thed, p);
+    // auto [pmb, del] = PM_Basis<uint64_t, myint>(seq_list, thed, p);
+    auto [pmb, del] = cuPM_Basis<myint>(seq_list, thed, p);
     analyze_pm_basis<uint64_t>(pmb, del, p);
     
 
