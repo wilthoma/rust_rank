@@ -10,7 +10,20 @@
 #include "modular_linalg.h"
 #include "ntt.h"
 
+#define CHECK_CUDA(func)                                                       \
+{                                                                              \
+    cudaError_t status = (func);                                               \
+    if (status != cudaSuccess) {                                               \
+        printf("CUDA API failed at line %d with error: %s (%d)\n",             \
+               __LINE__, cudaGetErrorString(status), status);                  \
+        throw std::runtime_error("CUDA error");                                \
+    }                                                                          \
+}
+
+#define CUCHECK CHECK_CUDA(cudaGetLastError())
+
 using u64 = uint64_t;
+using u128 = __uint128_t;
 
 // Example prime and primitive root for NTT
 const u64 p = 2305843009146585089ULL;     // = 15 * 2^27 + 1, 31-bit prime
@@ -78,20 +91,18 @@ __global__ void bit_reverse_kernel(u64* data, u64 n, u64 logn) {
     }
 }
 
-__global__ void ntt_stage_kernel(u64* data, const u64* twiddles, u64 n, u64 step, u64 p) {
+__global__ void ntt_stage_kernel(u64 *data, const u64 *twiddles, u64 step, u64 p) {
     u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
     u64 m = step * 2;
-    if (tid >= n / 2) return;
+    u64 pos = tid * m;
+    if (pos + step >= gridDim.x * blockDim.x * m) return;
 
-    u64 i = (tid / step) * m + (tid % step);
-    u64 j = i + step;
-    u64 w = twiddles[(n / m) * (tid % step)];
-
-    u64 u = data[i];
-    u64 v = dmod_mul(data[j], w, p);
-
-    data[i] = dmod_add(u, v, p);
-    data[j] = dmod_sub(u, v, p);
+    for (u64 j = 0; j < step; ++j) {
+        u64 u = data[pos + j];
+        u64 v = dmod_mul(data[pos + j + step], twiddles[j], p);
+        data[pos + j] = dmod_add(u, v, p);
+        data[pos + j + step] = dmod_sub(u, v, p);
+    }
 }
 
 __global__ void scale_kernel(u64* data, u64 n, u64 ninv, u64 p) {
@@ -126,40 +137,57 @@ void generate_twiddles(std::vector<u64>& tw, u64 n, u64 root, u64 p, bool invers
     }
 }
 
+void launch_bit_reverse_kernel(u64* d_data, u64 n) {
+    u64 logn = 0;
+    u64 tmp = n;
+    while (tmp > 1) {
+        tmp >>= 1;
+        logn++;
+    }
+
+    const int blockSize = 256;
+    const int gridSize = (n + blockSize - 1) / blockSize;
+    bit_reverse_kernel<<<gridSize, blockSize>>>(d_data, n, logn);
+}
+
 void ntt_cuda(std::vector<u64>& h_data, bool inverse = false) {
     u64 n = h_data.size();
-    if ((n & (n - 1)) != 0) {
-        throw std::invalid_argument("n must be a power of two");
-    }
+    assert((n & (n - 1)) == 0); // Ensure n is a power of 2
 
-    u64 logn = std::log2(n);
+    const u64 p = 2013265921;         // example: 15×2^27 + 1
+    const u64 root = 31;              // primitive root of p
+    const u64 inv_n = mod_pow(n, p - 2);//, p);
+    const u64 w = inverse ? mod_pow(root, p - 2) : root;//, p) : root;
 
-    std::vector<u64> h_twiddles(n / 2);
-    generate_twiddles(h_twiddles, n, root, p, inverse);
-
-    u64 *d_data = nullptr, *d_twiddles = nullptr;
+    // Device memory
+    u64 *d_data, *d_twiddles;
     cudaMalloc(&d_data, n * sizeof(u64));
-    cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64));
     cudaMemcpy(d_data, h_data.data(), n * sizeof(u64), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_twiddles, h_twiddles.data(), (n / 2) * sizeof(u64), cudaMemcpyHostToDevice);
 
-    const int threadsPerBlock = 256;
-    int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock;
-    bit_reverse_kernel<<<numBlocks, threadsPerBlock>>>(d_data, n, logn);
-    cudaDeviceSynchronize();
+    cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64)); // Max twiddles needed
 
+    // Bit-reversal permutation kernel
+    launch_bit_reverse_kernel(d_data, n); // assumed to be implemented
+
+    // NTT loop
     for (u64 step = 1; step < n; step *= 2) {
-        u64 threads = n / 2;
-        u64 blocks = (threads + threadsPerBlock - 1) / threadsPerBlock;
-        ntt_stage_kernel<<<blocks, threadsPerBlock>>>(d_data, d_twiddles, n, step, p);
-        cudaDeviceSynchronize();
+        u64 m = step * 2;
+        u64 wm = mod_pow(w, n / m);//, p);
+
+        std::vector<u64> stage_twiddles(step);
+        stage_twiddles[0] = 1;
+        for (u64 j = 1; j < step; ++j)
+            stage_twiddles[j] = (u128)stage_twiddles[j - 1] * wm % p;
+
+        cudaMemcpy(d_twiddles, stage_twiddles.data(), step * sizeof(u64), cudaMemcpyHostToDevice);
+
+        u64 blocks = (n / 2 + 255) / 256;
+        ntt_stage_kernel<<<blocks, 256>>>(d_data, d_twiddles, step, p);
     }
 
-    if (inverse) {
-        u64 ninv = modinv(n, p);
-        scale_kernel<<<numBlocks, threadsPerBlock>>>(d_data, n, ninv, p);
-        cudaDeviceSynchronize();
-    }
+    // Scale by n⁻¹ in inverse
+    if (inverse)
+        scale_kernel<<<(n + 255) / 256, 256>>>(d_data, inv_n, n, p);
 
     cudaMemcpy(h_data.data(), d_data, n * sizeof(u64), cudaMemcpyDeviceToHost);
     cudaFree(d_data);
@@ -199,6 +227,14 @@ void test_ntt_cuda_same_as_ntt() {
     std::cout << "Cuda NTT and CPU NTT test passed!" << std::endl;
 }
 
+__global__ void modmul_kernel(u64* a, u64* b, u64* result, u64 n, u64 p) 
+{
+    u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < n) {
+        result[tid] = dmod_mul(a[tid], b[tid], p);
+    }
+}
+
 void test_modmul_cuda() {
     size_t n = 1 << 20; // e.g., 2^20 = 1 million
     std::vector<u64> a(n), b(n), host_result(n), device_result(n);
@@ -226,14 +262,7 @@ void test_modmul_cuda() {
     const int threadsPerBlock = 256;
     int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock;
 
-    auto modmul_kernel = [] __global__(u64* a, u64* b, u64* result, u64 n, u64 p) {
-        u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
-        if (tid < n) {
-            result[tid] = dmod_mul(a[tid], b[tid], p);
-        }
-    };
-
-    modmul_kernel<<<numBlocks, threadsPerBlock>>>(d_a, d_b, d_result, n, p);
+    modmul_kernel<<<numBlocks, threadsPerBlock>>>(d_a, d_b, d_result, n, p);  CUCHECK
     cudaDeviceSynchronize();
 
     cudaMemcpy(device_result.data(), d_result, n * sizeof(u64), cudaMemcpyDeviceToHost);
@@ -247,7 +276,7 @@ void test_modmul_cuda() {
     cudaFree(d_result);
 }
 
-oid bit_reverse_host(std::vector<u64>& data, u64 n, u64 logn) {
+void bit_reverse_host(std::vector<u64>& data, u64 n, u64 logn) {
     for (u64 i = 0; i < n; ++i) {
         u64 rev = bit_reverse(i, logn);
         // for (u64 j = 0; j < logn; ++j) {
@@ -280,7 +309,7 @@ void test_bit_reverse_cuda() {
 
     const int threadsPerBlock = 256;
     int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock;
-    bit_reverse_kernel<<<numBlocks, threadsPerBlock>>>(d_data, n, logn);
+    bit_reverse_kernel<<<numBlocks, threadsPerBlock>>>(d_data, n, logn);  CUCHECK
     cudaDeviceSynchronize();
 
     std::vector<u64> device_result(n);
