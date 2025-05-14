@@ -148,7 +148,7 @@ std::vector<int64_t> _cuPM_Basis(
         u64* mul1;
         CHECK_CUDA(cudaMalloc(&mul1, n * n * (d/2) * sizeof(u64)));
         // auto GG = poly_mat_mul_fft_red(MM, G, seqprime, 0, d + 1);
-        cupoly_mat_mul_fft_gpu(dout1, dG, mul1, n, n, n/2, d/2+1, d/2, d/2, d/2);
+        cupoly_mat_mul_fft_gpu(dout1, dG, mul1, n, n, n/2, d/2+1, d, d/2, d/2);
         modp_buffer(mul1, n * n * (d/2), seqprime);
         // shift_trunc_in(GG, d / 2, d / 2);
 
