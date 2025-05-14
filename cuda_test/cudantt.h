@@ -43,7 +43,7 @@ __device__ __forceinline__ u64 dmod_mul(u64 a, u64 b, u64 p) {
 
     u64 lo = a * b;
     u64 hi = __umul64hi(a, b);
-    u64 res;
+    //u64 res;
 
     //__uint128_t product = static_cast<__uint128_t>(a) * b;
     u64 cc = (lo << 3) >> 3; // lowest 61 bits 
@@ -91,11 +91,28 @@ __global__ void bit_reverse_kernel(u64* data, u64 n, u64 logn) {
     }
 }
 
-__global__ void ntt_stage_kernel(u64 *data, const u64 *twiddles, u64 step, u64 p) {
+__global__ void bit_reverse_kernel_colwise(u64* data, u64 n, u64 n_cols, u64 logn) {
+    u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= n) return;
+    u64 col = blockIdx.y * blockDim.y + threadIdx.y;
+    if (col >= n_cols) return;
+
+    u64 rev = 0;
+    for (u64 i = 0; i < logn; ++i)
+        rev |= ((tid >> i) & 1) << (logn - 1 - i);
+    if (tid < rev) {
+        u64 tmp = data[tid*n_cols + col];
+        data[tid*n_cols + col] = data[rev*n_cols + col];
+        data[rev*n_cols + col] = tmp;
+    }
+}
+
+__global__ void ntt_stage_kernel(u64 *data, const u64 *twiddles, u64 step, u64 n, u64 p) {
     u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
     u64 m = step * 2;
     u64 pos = tid * m;
-    if (pos + step >= gridDim.x * blockDim.x * m) return;
+
+    if (pos + step >= n) return; // bounds check
 
     for (u64 j = 0; j < step; ++j) {
         u64 u = data[pos + j];
@@ -105,7 +122,26 @@ __global__ void ntt_stage_kernel(u64 *data, const u64 *twiddles, u64 step, u64 p
     }
 }
 
-__global__ void scale_kernel(u64* data, u64 n, u64 ninv, u64 p) {
+__global__ void ntt_stage_kernel_colwise(u64 *data, const u64 *twiddles, u64 step, u64 n, u64 n_cols, u64 p) {
+    
+    u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
+    u64 col = blockIdx.y * blockDim.y + threadIdx.y;
+    u64 m = step * 2;
+    u64 pos = tid * m;
+    if (col >= n_cols) return;
+    if (pos + step >= n) return; // bounds check
+
+    for (u64 j = 0; j < step; ++j) {
+        int idx1 = (pos + j)*n_cols + col;
+        int idx2 = (pos + j + step)*n_cols + col;
+        u64 u = data[idx1];
+        u64 v = dmod_mul(data[idx2], twiddles[j], p);
+        data[idx1] = dmod_add(u, v, p);
+        data[idx2] = dmod_sub(u, v, p);
+    }
+}
+
+__global__ void scale_kernel(u64* data, u64 ninv, u64 n, u64 p) {
     u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < n) {
         data[tid] = dmod_mul(data[tid], ninv, p);
@@ -129,13 +165,13 @@ __global__ void scale_kernel(u64* data, u64 n, u64 ninv, u64 p) {
 //     return (t + p) % p;
 // }
 
-void generate_twiddles(std::vector<u64>& tw, u64 n, u64 root, u64 p, bool inverse = false) {
-    u64 r = inverse ? modinv(root, p) : root;
-    tw[0] = 1;
-    for (u64 i = 1; i < n / 2; ++i) {
-        tw[i] = (__uint128_t)tw[i - 1] * r % p;
-    }
-}
+// void generate_twiddles(std::vector<u64>& tw, u64 n, u64 root, u64 p, bool inverse = false) {
+//     u64 r = inverse ? modinv(root, p) : root;
+//     tw[0] = 1;
+//     for (u64 i = 1; i < n / 2; ++i) {
+//         tw[i] = (__uint128_t)tw[i - 1] * r % p;
+//     }
+// }
 
 void launch_bit_reverse_kernel(u64* d_data, u64 n) {
     u64 logn = 0;
@@ -147,49 +183,175 @@ void launch_bit_reverse_kernel(u64* d_data, u64 n) {
 
     const int blockSize = 256;
     const int gridSize = (n + blockSize - 1) / blockSize;
-    bit_reverse_kernel<<<gridSize, blockSize>>>(d_data, n, logn);
+    bit_reverse_kernel<<<gridSize, blockSize>>>(d_data, n, logn); CUCHECK
+}
+
+void launch_bit_reverse_kernel_colwise(u64* d_data, u64 n, u64 n_cols) {
+    u64 logn = 0;
+    u64 tmp = n;
+    while (tmp > 1) {
+        tmp >>= 1;
+        logn++;
+    }
+    dim3 blockDim(32, 16);
+    dim3 gridDim((n + blockDim.x - 1) / blockDim.x,
+                (n_cols + blockDim.y - 1) / blockDim.y);
+
+    // const int blockSize = 256;
+    // const int gridSize = (n + blockSize - 1) / blockSize;
+    // bit_reverse_kernel_colwise<<<gridSize, blockSize>>>(d_data, n, n_cols, logn);
+    bit_reverse_kernel_colwise<<<gridDim, blockDim>>>(d_data, n, n_cols, logn); CUCHECK
 }
 
 void ntt_cuda(std::vector<u64>& h_data, bool inverse = false) {
     u64 n = h_data.size();
     assert((n & (n - 1)) == 0); // Ensure n is a power of 2
 
-    const u64 p = 2013265921;         // example: 15×2^27 + 1
-    const u64 root = 31;              // primitive root of p
-    const u64 inv_n = mod_pow(n, p - 2);//, p);
-    const u64 w = inverse ? mod_pow(root, p - 2) : root;//, p) : root;
+    const u64 inv_n = mod_pow(n, p - 2);  // n⁻¹ mod p
+    // std::cout << n << " ..inverse... " << inv_n<< std::endl;
+    // const u64 w = inverse ? mod_pow(root, p - 2) : root;
+    const u64 w = inverse ? mod_pow(root, p - 1 - (p - 1) / n) : mod_pow(root, (p - 1) / n);
+
+    // T root_pow = invert
+    //     ? mod_pow(root, p - 1 - (p - 1) / n)
+    //     : mod_pow(root, (p - 1) / n);
+
+    // for (size_t len = 2; len <= n; len <<= 1) {
+    //     T wlen = mod_pow(root_pow, static_cast<T>(n / len));
+    //     for (size_t i = 0; i < n; i += len) {
+    //         T w = 1;
+    //         for (size_t j = 0; j < len / 2; ++j) {
+    //             T u = a[i + j];
+    //             T v = mod_mul(a[i + j + len / 2],w);
+    //             a[i + j] = mod_add(u,v);
+    //             a[i + j + len / 2] = mod_sub(u,v);
+    //             w = mod_mul(w, wlen);
+    //         }
+    //     }
+    // }
+
 
     // Device memory
     u64 *d_data, *d_twiddles;
-    cudaMalloc(&d_data, n * sizeof(u64));
-    cudaMemcpy(d_data, h_data.data(), n * sizeof(u64), cudaMemcpyHostToDevice);
+    CHECK_CUDA(cudaMalloc(&d_data, n * sizeof(u64)));
+    CHECK_CUDA(cudaMemcpy(d_data, h_data.data(), n * sizeof(u64), cudaMemcpyHostToDevice));
 
-    cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64)); // Max twiddles needed
+    CHECK_CUDA(cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64))); // max needed is n/2
 
-    // Bit-reversal permutation kernel
-    launch_bit_reverse_kernel(d_data, n); // assumed to be implemented
+    // Bit-reversal permutation
+    launch_bit_reverse_kernel(d_data, n);  // assumed to be correct
 
-    // NTT loop
+    // NTT stages
     for (u64 step = 1; step < n; step *= 2) {
         u64 m = step * 2;
-        u64 wm = mod_pow(w, n / m);//, p);
+        u64 wm = mod_pow(w, n / m);
 
+        // Compute twiddles for this stage
         std::vector<u64> stage_twiddles(step);
         stage_twiddles[0] = 1;
         for (u64 j = 1; j < step; ++j)
             stage_twiddles[j] = (u128)stage_twiddles[j - 1] * wm % p;
 
-        cudaMemcpy(d_twiddles, stage_twiddles.data(), step * sizeof(u64), cudaMemcpyHostToDevice);
+        CHECK_CUDA(cudaMemcpy(d_twiddles, stage_twiddles.data(), step * sizeof(u64), cudaMemcpyHostToDevice));
 
-        u64 blocks = (n / 2 + 255) / 256;
-        ntt_stage_kernel<<<blocks, 256>>>(d_data, d_twiddles, step, p);
+        // Launch one thread per butterfly group of size 2*step
+        u64 threads_needed = n / (2 * step);
+        u64 blocks = (threads_needed + 255) / 256;
+        ntt_stage_kernel<<<blocks, 256>>>(d_data, d_twiddles, step, n, p); //CUCHECK
+        CHECK_CUDA(cudaDeviceSynchronize());
     }
 
     // Scale by n⁻¹ in inverse
-    if (inverse)
-        scale_kernel<<<(n + 255) / 256, 256>>>(d_data, inv_n, n, p);
+    if (inverse) {
+    // if (false){
+        u64 threads = (n + 255) / 256;
+        // std::cout << "scaling by " << inv_n<< std::endl;
+        scale_kernel<<<threads, 256>>>(d_data, inv_n, n, p);// CUCHECK
+        CHECK_CUDA(cudaDeviceSynchronize());
+    }
 
-    cudaMemcpy(h_data.data(), d_data, n * sizeof(u64), cudaMemcpyDeviceToHost);
+    CHECK_CUDA(cudaMemcpy(h_data.data(), d_data, n * sizeof(u64), cudaMemcpyDeviceToHost));
+    cudaFree(d_data);
+    cudaFree(d_twiddles);
+}
+
+// the data represents an n x nr_columns matrix, ntt operates column-wise
+// the data is assumed to be in row-major order
+void ntt_cuda_colwise(std::vector<u64>& h_data, int n_cols, bool inverse = false) {
+    u64 n = h_data.size() / n_cols;
+    u64 nn = h_data.size();
+    assert(n*n_cols == nn);
+    assert((n & (n - 1)) == 0); // Ensure n is a power of 2
+
+    const u64 inv_n = mod_pow(n, p - 2);  // n⁻¹ mod p
+    // std::cout << n << " ..inverse... " << inv_n<< std::endl;
+    // const u64 w = inverse ? mod_pow(root, p - 2) : root;
+    const u64 w = inverse ? mod_pow(root, p - 1 - (p - 1) / n) : mod_pow(root, (p - 1) / n);
+
+    // T root_pow = invert
+    //     ? mod_pow(root, p - 1 - (p - 1) / n)
+    //     : mod_pow(root, (p - 1) / n);
+
+    // for (size_t len = 2; len <= n; len <<= 1) {
+    //     T wlen = mod_pow(root_pow, static_cast<T>(n / len));
+    //     for (size_t i = 0; i < n; i += len) {
+    //         T w = 1;
+    //         for (size_t j = 0; j < len / 2; ++j) {
+    //             T u = a[i + j];
+    //             T v = mod_mul(a[i + j + len / 2],w);
+    //             a[i + j] = mod_add(u,v);
+    //             a[i + j + len / 2] = mod_sub(u,v);
+    //             w = mod_mul(w, wlen);
+    //         }
+    //     }
+    // }
+
+
+    // Device memory
+    u64 *d_data, *d_twiddles;
+    CHECK_CUDA(cudaMalloc(&d_data, nn * sizeof(u64)));
+    CHECK_CUDA(cudaMemcpy(d_data, h_data.data(), nn * sizeof(u64), cudaMemcpyHostToDevice));
+
+    CHECK_CUDA(cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64))); // max needed is n/2
+
+    // Bit-reversal permutation
+    launch_bit_reverse_kernel(d_data, n);  // assumed to be correct
+
+    // NTT stages
+    for (u64 step = 1; step < n; step *= 2) {
+        u64 m = step * 2;
+        u64 wm = mod_pow(w, n / m);
+
+        // Compute twiddles for this stage
+        std::vector<u64> stage_twiddles(step);
+        stage_twiddles[0] = 1;
+        for (u64 j = 1; j < step; ++j)
+            stage_twiddles[j] = (u128)stage_twiddles[j - 1] * wm % p;
+
+        CHECK_CUDA(cudaMemcpy(d_twiddles, stage_twiddles.data(), step * sizeof(u64), cudaMemcpyHostToDevice));
+
+        // Launch one thread per butterfly group of size 2*step
+        u64 threads_needed = n / (2 * step);
+        dim3 blockDim(32, 16);
+        dim3 gridDim((threads_needed + blockDim.x - 1) / blockDim.x,
+                    (n_cols + blockDim.y - 1) / blockDim.y);
+        // u64 threads_needed = n / (2 * step);
+        // u64 blocks = (threads_needed + 255) / 256;
+        // ntt_stage_kernel<<<blocks, 256>>>(d_data, d_twiddles, step, n, p); //CUCHECK
+        ntt_stage_kernel_colwise<<<gridDim, blockDim>>>(d_data, d_twiddles, step, n, n_cols, p); //CUCHECK
+        CHECK_CUDA(cudaDeviceSynchronize());
+    }
+
+    // Scale by n⁻¹ in inverse
+    if (inverse) {
+    // if (false){
+        u64 threads = (nn + 255) / 256;
+        // std::cout << "scaling by " << inv_n<< std::endl;
+        scale_kernel<<<threads, 256>>>(d_data, inv_n, nn, p);// CUCHECK
+        CHECK_CUDA(cudaDeviceSynchronize());
+    }
+
+    CHECK_CUDA(cudaMemcpy(h_data.data(), d_data, nn * sizeof(u64), cudaMemcpyDeviceToHost));
     cudaFree(d_data);
     cudaFree(d_twiddles);
 }
@@ -223,6 +385,7 @@ void test_ntt_cuda_same_as_ntt() {
     ntt(data_copy, false); // Forward NTT on CPU
 
     // Check if the results are the same
+    // std::cout << "Cuda NTT vs CPU NTT: "<< std::endl;
     assert(data == data_copy && "Cuda NTT and CPU NTT should produce the same result");
     std::cout << "Cuda NTT and CPU NTT test passed!" << std::endl;
 }
@@ -252,12 +415,12 @@ void test_modmul_cuda() {
 
     // Device-side multiplication mod p
     u64 *d_a = nullptr, *d_b = nullptr, *d_result = nullptr;
-    cudaMalloc(&d_a, n * sizeof(u64));
-    cudaMalloc(&d_b, n * sizeof(u64));
-    cudaMalloc(&d_result, n * sizeof(u64));
+    cudaMalloc(&d_a, n * sizeof(u64));  CUCHECK
+    cudaMalloc(&d_b, n * sizeof(u64)); CUCHECK
+    cudaMalloc(&d_result, n * sizeof(u64)); CUCHECK
 
-    cudaMemcpy(d_a, a.data(), n * sizeof(u64), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, b.data(), n * sizeof(u64), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_a, a.data(), n * sizeof(u64), cudaMemcpyHostToDevice); CUCHECK
+    cudaMemcpy(d_b, b.data(), n * sizeof(u64), cudaMemcpyHostToDevice); CUCHECK
 
     const int threadsPerBlock = 256;
     int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock;
@@ -265,7 +428,7 @@ void test_modmul_cuda() {
     modmul_kernel<<<numBlocks, threadsPerBlock>>>(d_a, d_b, d_result, n, p);  CUCHECK
     cudaDeviceSynchronize();
 
-    cudaMemcpy(device_result.data(), d_result, n * sizeof(u64), cudaMemcpyDeviceToHost);
+    cudaMemcpy(device_result.data(), d_result, n * sizeof(u64), cudaMemcpyDeviceToHost); CUCHECK
 
     // Compare results
     assert(host_result == device_result && "Host and device results should match");
@@ -320,6 +483,49 @@ void test_bit_reverse_cuda() {
     std::cout << "Cuda bit reverse test passed!" << std::endl;
 
     cudaFree(d_data);
+}
+
+void test_cudantt_small() {
+    int n = 8;
+    // vector of ones
+    std::vector<u64> data(n, 1);
+    data[2] = p-1;
+    std::vector<u64> data_copy = data; // Copy for verification
+    // std::vector<u64> data_copy2 = data; // Copy for verification
+    ntt_cuda(data, false); // Forward NTT
+    ntt(data_copy, false); // Forward NTT on CPU
+
+    // print both results
+    std::cout << "Cuda NTT: ";
+    for (auto i : data) {
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "CPU NTT : ";
+    for (auto i : data_copy) {
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
+    u64 invroot = mod_pow(root, p - 2);
+    std::cout << "invroot: " << invroot << std::endl;
+    u64 invn = mod_pow((u64)n, p - 2);
+    u64 x = mod_mul(invn,(u64)n);
+    u64 y = invn * n;
+    std::cout << "invn: " << invn << "   " << x  << "   " <<y<< std::endl;
+
+    ntt_cuda(data, true); // inverse NTT
+    ntt(data_copy, true); // inverse NTT on CPU
+    // print both results
+    std::cout << "inv. Cuda NTT: ";
+    for (auto i : data) {
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "inv. CPU NTT: ";
+    for (auto i : data_copy) {
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
 }
 
 #endif // CUDANTT_H

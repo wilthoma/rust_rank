@@ -12,6 +12,7 @@
 #include "sigma_basis.h"
 #include "wdmfiles.h"
 #include "cudantt.h"
+#include "cupoly_mat_mul.h"
 
 
 using namespace std;
@@ -37,9 +38,10 @@ int main(int argc, char** argv) {
         test_runall_modular_linalg();
         test_bit_reverse_cuda();
         test_modmul_cuda();
+        //test_cudantt_small();
         test_ntt_cuda_inv();
         test_ntt_cuda_same_as_ntt();
-
+        test_cuda_poly_mul_methods();
         return 0;
     }
 
@@ -56,10 +58,11 @@ int main(int argc, char** argv) {
     uint32_t p;
     size_t m, n, nlen, num_v;
     std::tie(p, m, n, num_v) = load_wdm_file_sym<myint>(wdm_filename, row_precond, col_precond, v_list, curv_list, seq_list);
+    nlen = seq_list[0].size();
     cout << "Loaded WDM file: " << wdm_filename << endl;
     cout << "p: " << p << ", m: " << m << ", n: " << n << ", num_v: " << num_v << endl;
     // print number of entries in seq list
-    cout << "Number of entries in sequence(s): " << seq_list[0].size() << endl;
+    cout << "Number of entries in sequence(s): " << nlen << endl;
 
     size_t thed = 1;
     while (thed <= seq_list[0].size()) {

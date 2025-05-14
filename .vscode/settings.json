@@ -83,6 +83,7 @@
         "map": "cpp",
         "numeric": "cpp",
         "random": "cpp",
-        "set": "cpp"
+        "set": "cpp",
+        "span": "cpp"
     }
 }
