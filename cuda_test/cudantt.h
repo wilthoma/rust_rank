@@ -199,5 +199,98 @@ void test_ntt_cuda_same_as_ntt() {
     std::cout << "Cuda NTT and CPU NTT test passed!" << std::endl;
 }
 
+void test_modmul_cuda() {
+    size_t n = 1 << 20; // e.g., 2^20 = 1 million
+    std::vector<u64> a(n), b(n), host_result(n), device_result(n);
+
+    // Generate random integers between 0 and p-1
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = rand() % p;
+        b[i] = rand() % p;
+    }
+
+    // Host-side multiplication mod p
+    for (size_t i = 0; i < n; ++i) {
+        host_result[i] = (static_cast<__uint128_t>(a[i]) * b[i]) % p;
+    }
+
+    // Device-side multiplication mod p
+    u64 *d_a = nullptr, *d_b = nullptr, *d_result = nullptr;
+    cudaMalloc(&d_a, n * sizeof(u64));
+    cudaMalloc(&d_b, n * sizeof(u64));
+    cudaMalloc(&d_result, n * sizeof(u64));
+
+    cudaMemcpy(d_a, a.data(), n * sizeof(u64), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b.data(), n * sizeof(u64), cudaMemcpyHostToDevice);
+
+    const int threadsPerBlock = 256;
+    int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock;
+
+    auto modmul_kernel = [] __global__(u64* a, u64* b, u64* result, u64 n, u64 p) {
+        u64 tid = blockIdx.x * blockDim.x + threadIdx.x;
+        if (tid < n) {
+            result[tid] = dmod_mul(a[tid], b[tid], p);
+        }
+    };
+
+    modmul_kernel<<<numBlocks, threadsPerBlock>>>(d_a, d_b, d_result, n, p);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(device_result.data(), d_result, n * sizeof(u64), cudaMemcpyDeviceToHost);
+
+    // Compare results
+    assert(host_result == device_result && "Host and device results should match");
+    std::cout << "Cuda modmul test passed!" << std::endl;
+
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_result);
+}
+
+oid bit_reverse_host(std::vector<u64>& data, u64 n, u64 logn) {
+    for (u64 i = 0; i < n; ++i) {
+        u64 rev = bit_reverse(i, logn);
+        // for (u64 j = 0; j < logn; ++j) {
+        //     rev |= ((i >> j) & 1) << (logn - 1 - j);
+        // }
+        if (i < rev) {
+            std::swap(data[i], data[rev]);
+        }
+    }
+}
+
+void test_bit_reverse_cuda() {
+    size_t n = 1 << 20; // e.g., 2^20 = 1 million
+    u64 logn = std::log2(n);
+
+    // Generate test data
+    std::vector<u64> host_data(n);
+    for (u64 i = 0; i < n; ++i) {
+        host_data[i] = i;
+    }
+
+    // Perform bit reversal on the host
+    std::vector<u64> host_result = host_data;
+    bit_reverse_host(host_result, n, logn);
+
+    // Perform bit reversal on the device
+    u64* d_data = nullptr;
+    cudaMalloc(&d_data, n * sizeof(u64));
+    cudaMemcpy(d_data, host_data.data(), n * sizeof(u64), cudaMemcpyHostToDevice);
+
+    const int threadsPerBlock = 256;
+    int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock;
+    bit_reverse_kernel<<<numBlocks, threadsPerBlock>>>(d_data, n, logn);
+    cudaDeviceSynchronize();
+
+    std::vector<u64> device_result(n);
+    cudaMemcpy(device_result.data(), d_data, n * sizeof(u64), cudaMemcpyDeviceToHost);
+
+    // Compare results
+    assert(host_result == device_result && "Host and device bit reversal results should match");
+    std::cout << "Cuda bit reverse test passed!" << std::endl;
+
+    cudaFree(d_data);
+}
 
 #endif // CUDANTT_H

@@ -35,7 +35,8 @@ int main(int argc, char** argv) {
         test_poly_mul_naive_vs_fft();
         test_poly_mat_mul_naive_vs_fft();
         test_runall_modular_linalg();
-        
+        test_bit_reverse_cuda();
+        test_modmul_cuda();
         test_ntt_cuda_inv();
         test_ntt_cuda_same_as_ntt();
 
