@@ -371,8 +371,8 @@ void test_ntt_cuda_colwise_inv() {
     ntt_cuda_colwise(data, n_cols, true);  // Inverse NTT (should restore original)
 
     // Check if the original data is restored
-    assert(data == data_copy && "NTT followed by inverse NTT should return the original data");
-    std::cout << "Cuda NTT and inverse NTT test passed!" << std::endl;
+    assert(data == data_copy && "Cuda NTT colwise followed by inverse NTT should return the original data");
+    std::cout << "Cuda NTT colwise and inverse NTT test passed!" << std::endl;
 }
 
 
@@ -415,8 +415,8 @@ void test_ntt_cuda_colwise_same_as_ntt() {
     }
 
     // Check if the results are the same
-    assert(data == data_copy && "Cuda NTT and CPU NTT should produce the same result");
-    std::cout << "Cuda NTT and CPU NTT test passed!" << std::endl;
+    assert(data == data_copy && "Cuda NTT colwise and CPU NTT should produce the same result");
+    std::cout << "Cuda NTT colwise and CPU NTT test passed!" << std::endl;
 }
 
 void test_ntt_cuda_same_as_ntt() {

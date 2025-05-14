@@ -42,6 +42,9 @@ int main(int argc, char** argv) {
         test_ntt_cuda_inv();
         test_ntt_cuda_same_as_ntt();
         test_cuda_poly_mul_methods();
+        
+        test_ntt_cuda_colwise_inv();
+        test_ntt_cuda_colwise_same_as_ntt();
         return 0;
     }
 
