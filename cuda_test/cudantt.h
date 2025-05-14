@@ -357,6 +357,25 @@ void ntt_cuda_colwise(std::vector<u64>& h_data, int n_cols, bool inverse = false
 }
 
 
+void test_ntt_cuda_colwise_inv() {
+    size_t n = 1 << 20; // e.g., 2^20 = 1 million
+    size_t n_cols = 4;
+    std::vector<u64> data(n * n_cols);
+    for (u64 i = 0; i < n; ++i)
+        for (u64 j = 0; j < n_cols; ++j)
+            data[i*n_cols + j] = i % p;
+
+    std::vector<u64> data_copy = data; // Copy for verification
+
+    ntt_cuda_colwise(data, n_cols, false); // Forward NTT
+    ntt_cuda_colwise(data, n_cols, true);  // Inverse NTT (should restore original)
+
+    // Check if the original data is restored
+    assert(data == data_copy && "NTT followed by inverse NTT should return the original data");
+    std::cout << "Cuda NTT and inverse NTT test passed!" << std::endl;
+}
+
+
 void test_ntt_cuda_inv() {
     size_t n = 1 << 20; // e.g., 2^20 = 1 million
     std::vector<u64> data(n);
@@ -371,6 +390,33 @@ void test_ntt_cuda_inv() {
     // Check if the original data is restored
     assert(data == data_copy && "NTT followed by inverse NTT should return the original data");
     std::cout << "Cuda NTT and inverse NTT test passed!" << std::endl;
+}
+
+void test_ntt_cuda_colwise_same_as_ntt() {
+    size_t n = 1 << 20; // e.g., 2^20 = 1 million
+    size_t n_cols = 4;
+    std::vector<u64> data(n * n_cols);
+    for (u64 i = 0; i < n; ++i)
+        for (u64 j = 0; j < n_cols; ++j)
+            data[i*n_cols + j] = i % p;
+
+    std::vector<u64> data_copy = data; // Copy for verification
+
+    ntt_cuda_colwise(data, n_cols, false); // Forward NTT
+    
+    // perform NTT for each column
+    for (int col = 0; col < n_cols; ++col) {
+        std::vector<u64> col_data(n);
+        for (u64 i = 0; i < n; ++i)
+            col_data[i] = data_copy[i*n_cols + col];
+        ntt(col_data, false); // Forward NTT on CPU
+        for (u64 i = 0; i < n; ++i)
+            data_copy[i*n_cols + col] = col_data[i];
+    }
+
+    // Check if the results are the same
+    assert(data == data_copy && "Cuda NTT and CPU NTT should produce the same result");
+    std::cout << "Cuda NTT and CPU NTT test passed!" << std::endl;
 }
 
 void test_ntt_cuda_same_as_ntt() {
