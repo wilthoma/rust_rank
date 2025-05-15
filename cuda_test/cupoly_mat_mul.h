@@ -260,6 +260,69 @@ vector<vector<vector<u64>>> cupoly_mat_mul_fft2(const vector<vector<vector<u64>>
 
 }
 
+vector<vector<vector<u64>>> cupoly_mat_mul_fft3(const vector<vector<vector<u64>>>& a, const vector<vector<vector<u64>>>& b) {
+    size_t m = a.size();
+    size_t n = a[0].size();
+    size_t k = b[0].size();
+    if (n != b.size()) {
+        throw invalid_argument("Matrix dimensions do not match for multiplication");
+    }
+
+    size_t nlena = a[0][0].size();
+    size_t nlenb = b[0][0].size();
+    size_t nlenres = nlena + nlenb - 1;
+
+    vector<u64> fa(m*n*nlena, 0);
+    vector<u64> fb(n*k*nlenb, 0);
+    vector<u64> fresult(m*k*nlen_res, 0);
+
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            for (size_t l = 0; l < nlena; ++l) {
+                fa[l*m*n + i*n + j] = a[i][j][l];
+            }
+        }
+    }
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < k; ++j) {
+            for (size_t l = 0; l < nlenb; ++l) {
+                fb[l*n*k + i*k + j] = b[i][j][l];
+            }
+        }
+    }
+
+    // auto start = high_resolution_clock::now();
+    // matrix_ntt_parallel(fa, false);
+    // matrix_ntt_parallel(fb, false);
+    // auto durationntt = high_resolution_clock::now() - start;
+    u64 *dfa, *dfb, *dresult; 
+    CHECK_CUDA(cudaMalloc(&dfa, fa.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&dfb, fb.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&dresult, fresult.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMemcpy(dfa, fa.data(), fa.size() * sizeof(u64), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(dfb, fb.data(), fb.size() * sizeof(u64), cudaMemcpyHostToDevice));
+
+    cupoly_mat_mul_fft_gpu(dfa, dfb, dresult, m,n,k, nlena, nlenb, 0, nlenres); 
+    CHECK_CUDA(cudaMemcpy(fresult.data(), dresult, fresult.size() * sizeof(u64), cudaMemcpyDeviceToHost));
+
+    // resize result
+    vector<vector<vector<u64>>> hresult(m, vector<vector<u64>>(k, vector<u64>(nlenres, 0)));
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < k; ++j) {
+            for (size_t l = 0; l < nlenres; ++l) {
+                hresult[i][j][l] = fresult[l*m*k + i*k+j];
+            }
+        }
+    }
+
+    CHECK_CUDA(cudaFree(dfa));
+    CHECK_CUDA(cudaFree(dfb));
+    CHECK_CUDA(cudaFree(dresult));
+
+    return hresult;
+
+}
+
 void cupoly_mat_mul_fft_gpu(u64* da, u64* db, u64* dresult, size_t m, size_t n, size_t k, size_t len_a, size_t len_b, size_t res_start_deg, size_t max_len_res) {
     
     size_t nlenres = len_a + len_b - 1;
@@ -471,7 +534,7 @@ void test_cuda_matrix_poly_mul_methods() {
 
     // Compute results using both methods
     // auto result_cuda = cupoly_mat_mul_fft1(matrix_a, matrix_b);
-    auto result_cuda = cupoly_mat_mul_fft2(matrix_a, matrix_b);
+    auto result_cuda = cupoly_mat_mul_fft3(matrix_a, matrix_b);
     auto result_cpu = poly_mat_mul_fft(matrix_a, matrix_b, 0, poly_degree_b);
 
     // Compare results
