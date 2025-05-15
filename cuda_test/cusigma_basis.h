@@ -11,6 +11,17 @@
 #include "sigma_basis.h"
 
 
+
+
+template<typename T>
+void display_cuda_buffer(T* d_buffer, int size, int prime, int max_elements = 10) {
+    std::vector<T> h_buffer(size);
+    cudaMemcpy(h_buffer.data(), d_buffer, size * sizeof(T), cudaMemcpyDeviceToHost);
+    display_vector<T>(h_buffer, prime, max_elements);
+}
+
+
+
 // the input is a matrix G of size m x m/2
 // the output is the two DMatrices of size m x m (the constant coeff and x-coeff) and the new delta
 std::tuple<DMatrix<u64>, DMatrix<u64>, std::vector<int64_t>> M_Basis2(
@@ -138,32 +149,54 @@ std::vector<int64_t> _cuPM_Basis(
             }
         }
         CHECK_CUDA(cudaMemcpy(dRes, res.data(), res.size() * sizeof(u64), cudaMemcpyHostToDevice));
-
+        
+        cout << "_cuPM (" <<d<<") in:" << endl;
+        display_cuda_buffer(dG, n * (n/2) * d, seqprime, 32);
+        cout << "_cuPM (" <<d<<") out:" << endl;
+        display_cuda_buffer(dRes, n * n * (d+1), seqprime, 32);
         return mumu;
     } else {
         u64* dout1;
         CHECK_CUDA(cudaMalloc(&dout1, n * n * (d/2+1) * sizeof(u64)));
         auto mumu = _cuPM_Basis(dG, dout1, n, d / 2, delta, seqprime, progress);
 
-        u64* mul1;
-        CHECK_CUDA(cudaMalloc(&mul1, n * (n/2) * (d/2) * sizeof(u64)));
+        u64 *dmul1, *dmul2, *dmul3;
+        CHECK_CUDA(cudaMalloc(&dmul1, n * (n/2) * (d/2) * sizeof(u64)));
+        CHECK_CUDA(cudaMalloc(&dmul2, 2*n * n * (d/2) * sizeof(u64)));
+        CHECK_CUDA(cudaMalloc(&dmul3, 2*n * n * (d/2) * sizeof(u64)));
         // auto GG = poly_mat_mul_fft_red(MM, G, seqprime, 0, d + 1);
-        cupoly_mat_mul_fft_gpu(dout1, dG, mul1, n, n, n/2, d/2+1, d, d/2, d/2);
-        modp_buffer(mul1, n * (n/2) * (d/2), seqprime);
+        cupoly_mat_mul_fft_gpu(dout1, dG, dmul1, n, n, n/2, d/2+1, d, d/2, d/2);
+        cupoly_mat_mul_fft_gpu(dout1, dG, dmul2, n, n, n/2, d/2+1, d, 0, d+d/2);
+        cupoly_mat_mul_fft_gpu(dout1, dG, dmul3, n, n, n/2, d/2+1, d, 0, d+d/2);
+        modp_buffer(dmul1, n * (n/2) * (d/2), seqprime);
+        modp_buffer(dmul2, 2*n * n * (d/2), seqprime);
+        modp_buffer(dmul3, 2*n * n * (d/2), seqprime);
+        if (d==4) {
+            cout << "cu d=4 extra" << endl;
+            display_cuda_buffer(dmul1, n * (n/2) * (d/2), seqprime, 32);
+            display_cuda_buffer(dmul2, n * (n/2) * (d+d/2), seqprime, 64);
+            display_cuda_buffer(dmul3, n * (n/2) * (d+d/2), seqprime, 64);
+        }
         // shift_trunc_in(GG, d / 2, d / 2);
+        CHECK_CUDA(cudaFree(dmul2));
+        CHECK_CUDA(cudaFree(dmul3));
 
         u64* dout2;
         CHECK_CUDA(cudaMalloc(&dout2, n * n * (d/2+1) * sizeof(u64)));
 
-        auto mumumu = _cuPM_Basis(mul1, dout2, n, d / 2, mumu, seqprime, progress);
+        auto mumumu = _cuPM_Basis(dmul1, dout2, n, d / 2, mumu, seqprime, progress);
 
-        cupoly_mat_mul_fft_gpu(dout1, dout2, dRes, n, n, n, d/2+1, d/2+1, 0, d+1);
+        cupoly_mat_mul_fft_gpu(dout2, dout1, dRes, n, n, n, d/2+1, d/2+1, 0, d+1);
         modp_buffer(dRes, n * n * (d+1), seqprime);
 
         CHECK_CUDA(cudaFree(dout1));
-        CHECK_CUDA(cudaFree(mul1));
+        CHECK_CUDA(cudaFree(dmul1));
         CHECK_CUDA(cudaFree(dout2));
         
+        cout << "_cuPM (" <<d<<") in:" << endl;
+        display_cuda_buffer(dG, n * (n/2) * d, seqprime, 32);
+        cout << "_cuPM (" <<d<<") out:" << endl;
+        display_cuda_buffer(dRes, n * n * (d+1), seqprime, 32);
         return mumumu;
         // return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
     }
@@ -247,6 +280,52 @@ std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> cuPM
 
 
 /****** TEST code */
+
+void test_cuPMBasis() {
+    // Generate random 3D matrices of polynomials
+    size_t n = 2; // Rows of matrix A
+    int d = 4; // Degree of polynomials
+    uint32_t prime = 7; // Prime number for modular arithmetic
+    size_t poly_degree = 6;
+    size_t seq_len = n * (n + 1) / 2;
+
+    vector<uint32_t> seq(seq_len * poly_degree, 0);
+    for (int i=0;i<seq.size();i++) {
+        seq[i] = rand() % 5; // Random coefficients in range [0, 999]
+    }
+
+    vector<vector<uint32_t>> matrix_a(seq_len, vector<uint32_t>(poly_degree, 0));
+    for (size_t i=0;i<seq_len;i++) {
+        for (size_t j=0;j<poly_degree;j++) {
+            matrix_a[i][j] = seq[i*poly_degree+j];
+        }
+    }
+
+    // auto [M, mu] = cuPM_Basis<uint32_t>(matrix_a, 1, prime);
+    // auto [M2, mu2] = PM_Basis<u64,uint32_t>(matrix_a, 1, prime);
+
+    // display_vecvecvec<u64>(M, prime, 32);
+    // display_vecvecvec<u64>(M2, prime, 32);
+
+    auto [M, mmu] = cuPM_Basis<uint32_t>(matrix_a, d, prime);
+    auto [M2, mmu2] = PM_Basis<u64,uint32_t>(matrix_a, d, prime);
+
+    display_vecvecvec<u64>(M, prime, 32);
+    display_vecvecvec<u64>(M2, prime, 32);
+
+    // check if M and M2 are equal
+    for (int dg=0; dg<d+1;dg++) {
+        for (int i=0;i<2*n;i++) {
+            for (int j=0;j<2*n;j++) {
+                if (M[i][j][dg] != M2[i][j][dg]) {
+                    std::cout << "Mismatch at (" << i << "," << j << "," << dg << "): " << M[i][j][dg] << " != " << M2[i][j][dg] << std::endl;
+                    assert(false);
+                }
+            }
+        }
+    }
+    std::cout << "Test passed: cuPM_Basis and PM_Basis agree." << std::endl;
+}
 
 
 

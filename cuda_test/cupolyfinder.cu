@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
         cout << "Running tests..." << endl;
 
         // test_cuda_vmat_mul();
-
+        test_cuPMBasis();
         test_ntt_inverse();
         test_modmul_agreement();
         // benchmark_ntt_u64_vs_ntt_u128();

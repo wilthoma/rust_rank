@@ -11,6 +11,36 @@
 #include "ntt.h"
 
 
+template<typename T>
+vector<T> vecvecvec_to_vec(const vector<vector<vector<T>>>& vec) {
+    size_t m = vec.size();
+    size_t n = vec[0].size();
+    size_t k = vec[0][0].size();
+    vector<T> result(m * n * k,0);
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            for (size_t l = 0; l < k; ++l) {
+                result[l*m*n + i*n+j] = vec[i][j][l];
+            }
+        }
+    }
+    return result;
+}
+
+template<typename T>
+void display_vector(const std::vector<T>& vec, T prime, int max_elements = 10) {
+    std::cout << "Vector: ";
+    for (int i = 0; i < std::min(max_elements, (int)vec.size()); ++i) {
+        std::cout << (vec[i]>=0?vec[i]:vec[i]+prime) << " ";
+    }
+    std::cout << std::endl;
+}
+template<typename T>
+void display_vecvecvec(const std::vector<std::vector<std::vector<T>>>& vec, T prime, int max_elements = 10) {
+    auto v = vecvecvec_to_vec(vec);
+    display_vector<T>(v, prime, max_elements);
+}
+
 template <typename S>
 std::vector<std::vector<std::vector<S>>> unit_mat(std::size_t n) {
     std::vector<std::vector<std::vector<S>>> mat(n, std::vector<std::vector<S>>(n, std::vector<S>(1, S(0))));
@@ -155,7 +185,12 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> _PM_Ba
         return {unit_mat<S>(n), delta};
     } else if (d == 1) {
         progress.progress_tick();
-        return M_Basis(G, delta, seqprime);
+        auto [MM, mumu] = M_Basis(G, delta, seqprime);
+        cout << "_PM (" <<d<<") in:" << endl;
+        display_vecvecvec<S>(G, seqprime, 32);
+        cout << "_PM (" <<d<<") out:" << endl;
+        display_vecvecvec<S>(MM, seqprime, 32);
+        return {MM, mumu};
     } else {
         auto [MM, mumu] = _PM_Basis(G, d / 2, delta, seqprime, progress);
 
@@ -163,7 +198,15 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> _PM_Ba
         shift_trunc_in(GG, d / 2, d / 2);
 
         auto [MMM, mumumu] = _PM_Basis(GG, d / 2, mumu, seqprime, progress);
-        return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
+        auto rret = poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size());
+        // return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
+
+        cout << "_PM (" <<d<<") in:" << endl;
+        display_vecvecvec<S>(G, seqprime, 32);
+        cout << "_PM (" <<d<<") out:" << endl;
+        display_vecvecvec<S>(rret, seqprime, 32);
+
+        return {rret, mumumu};
     }
 }
 

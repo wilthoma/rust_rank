@@ -260,6 +260,46 @@ vector<vector<vector<u64>>> cupoly_mat_mul_fft2(const vector<vector<vector<u64>>
 
 }
 
+void cupoly_mat_mul_fft_gpu(u64* da, u64* db, u64* dresult, size_t m, size_t n, size_t k, size_t len_a, size_t len_b, size_t res_start_deg, size_t max_len_res) {
+    
+    size_t nlenres = len_a + len_b - 1;
+
+    size_t nlenres_adj = 1;
+    while (nlenres_adj < nlenres) {
+        nlenres_adj <<= 1;
+    }
+
+
+    // auto start = high_resolution_clock::now();
+    // matrix_ntt_parallel(fa, false);
+    // matrix_ntt_parallel(fb, false);
+    // auto durationntt = high_resolution_clock::now() - start;
+    u64 *dfa, *dfb, *dfresult; 
+    CHECK_CUDA(cudaMalloc(&dfa, m * n * nlenres_adj * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&dfb, n * k * nlenres_adj * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&dfresult, m * k * nlenres_adj * sizeof(u64)));
+    // copy from cuda buffer da to dfa
+    CHECK_CUDA(cudaMemcpy(dfa, da, m * n * len_a * sizeof(u64), cudaMemcpyDeviceToDevice));
+    CHECK_CUDA(cudaMemcpy(dfb, db, n * k * len_b * sizeof(u64), cudaMemcpyDeviceToDevice));
+
+    ntt_cuda_colwise_gpu(dfa, nlenres_adj, m*n, false);
+    ntt_cuda_colwise_gpu(dfb, nlenres_adj, n*k, false);
+
+
+    // CHECK_CUDA(cudaMemset(dresult, 0, m*k*nlenres_adj * sizeof(u64)));
+    cuda_vmatmul(dfa, dfb, dfresult, m, n, k, nlenres_adj);
+
+    ntt_cuda_colwise_gpu(dfresult, nlenres_adj, m*k, true);
+
+    size_t actual_len_res = min(max_len_res, nlenres-res_start_deg);
+
+    CHECK_CUDA(cudaMemcpy(dresult, dfresult+m*k*res_start_deg, m * k * actual_len_res * sizeof(u64), cudaMemcpyDeviceToDevice));
+
+    CHECK_CUDA(cudaFree(dfa));
+    CHECK_CUDA(cudaFree(dfb));
+    CHECK_CUDA(cudaFree(dfresult));
+}
+
 vector<vector<vector<u64>>> cupoly_mat_mul_fft3(const vector<vector<vector<u64>>>& a, const vector<vector<vector<u64>>>& b) {
     size_t m = a.size();
     size_t n = a[0].size();
@@ -274,7 +314,7 @@ vector<vector<vector<u64>>> cupoly_mat_mul_fft3(const vector<vector<vector<u64>>
 
     vector<u64> fa(m*n*nlena, 0);
     vector<u64> fb(n*k*nlenb, 0);
-    vector<u64> fresult(m*k*nlen_res, 0);
+    vector<u64> fresult(m*k*nlenres, 0);
 
     for (size_t i = 0; i < m; ++i) {
         for (size_t j = 0; j < n; ++j) {
@@ -321,46 +361,6 @@ vector<vector<vector<u64>>> cupoly_mat_mul_fft3(const vector<vector<vector<u64>>
 
     return hresult;
 
-}
-
-void cupoly_mat_mul_fft_gpu(u64* da, u64* db, u64* dresult, size_t m, size_t n, size_t k, size_t len_a, size_t len_b, size_t res_start_deg, size_t max_len_res) {
-    
-    size_t nlenres = len_a + len_b - 1;
-
-    size_t nlenres_adj = 1;
-    while (nlenres_adj < nlenres) {
-        nlenres_adj <<= 1;
-    }
-
-
-    // auto start = high_resolution_clock::now();
-    // matrix_ntt_parallel(fa, false);
-    // matrix_ntt_parallel(fb, false);
-    // auto durationntt = high_resolution_clock::now() - start;
-    u64 *dfa, *dfb, *dfresult; 
-    CHECK_CUDA(cudaMalloc(&dfa, m * n * nlenres_adj * sizeof(u64)));
-    CHECK_CUDA(cudaMalloc(&dfb, n * k * nlenres_adj * sizeof(u64)));
-    CHECK_CUDA(cudaMalloc(&dfresult, m * k * nlenres_adj * sizeof(u64)));
-    // copy from cuda buffer da to dfa
-    CHECK_CUDA(cudaMemcpy(dfa, da, m * n * len_a * sizeof(u64), cudaMemcpyDeviceToDevice));
-    CHECK_CUDA(cudaMemcpy(dfb, db, n * k * len_b * sizeof(u64), cudaMemcpyDeviceToDevice));
-
-    ntt_cuda_colwise_gpu(dfa, nlenres_adj, m*n, false);
-    ntt_cuda_colwise_gpu(dfb, nlenres_adj, n*k, false);
-
-
-    // CHECK_CUDA(cudaMemset(dresult, 0, m*k*nlenres_adj * sizeof(u64)));
-    cuda_vmatmul(dfa, dfb, dfresult, m, n, k, nlenres_adj);
-
-    ntt_cuda_colwise_gpu(dfresult, nlenres_adj, m*k, true);
-
-    size_t actual_len_res = min(max_len_res, nlenres-res_start_deg);
-
-    CHECK_CUDA(cudaMemcpy(dresult, dfresult+m*k*res_start_deg, m * k * actual_len_res * sizeof(u64), cudaMemcpyDeviceToDevice));
-
-    CHECK_CUDA(cudaFree(dfa));
-    CHECK_CUDA(cudaFree(dfb));
-    CHECK_CUDA(cudaFree(dfresult));
 }
 
 template<typename T>
