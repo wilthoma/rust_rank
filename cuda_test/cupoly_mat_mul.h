@@ -270,14 +270,12 @@ void cupoly_mat_mul_fft_gpu(u64* da, u64* db, u64* dresult, size_t m, size_t n, 
     }
 
 
-    // auto start = high_resolution_clock::now();
-    // matrix_ntt_parallel(fa, false);
-    // matrix_ntt_parallel(fb, false);
-    // auto durationntt = high_resolution_clock::now() - start;
     u64 *dfa, *dfb, *dfresult; 
     CHECK_CUDA(cudaMalloc(&dfa, m * n * nlenres_adj * sizeof(u64)));
-    CHECK_CUDA(cudaMalloc(&dfb, n * k * nlenres_adj * sizeof(u64)));
-    CHECK_CUDA(cudaMalloc(&dfresult, m * k * nlenres_adj * sizeof(u64)));
+    CHECK_CUDA(cudaMemset(dfa, 0, m * n * nlenres_adj * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&dfb, n * k * nlenres_adj *sizeof(u64)));
+    CHECK_CUDA(cudaMemset(dfb, 0, n * k * nlenres_adj * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&dfresult, m * k * nlenres_adj *sizeof(u64)));
     // copy from cuda buffer da to dfa
     CHECK_CUDA(cudaMemcpy(dfa, da, m * n * len_a * sizeof(u64), cudaMemcpyDeviceToDevice));
     CHECK_CUDA(cudaMemcpy(dfb, db, n * k * len_b * sizeof(u64), cudaMemcpyDeviceToDevice));
@@ -293,6 +291,7 @@ void cupoly_mat_mul_fft_gpu(u64* da, u64* db, u64* dresult, size_t m, size_t n, 
 
     size_t actual_len_res = min(max_len_res, nlenres-res_start_deg);
 
+    
     CHECK_CUDA(cudaMemcpy(dresult, dfresult+m*k*res_start_deg, m * k * actual_len_res * sizeof(u64), cudaMemcpyDeviceToDevice));
 
     CHECK_CUDA(cudaFree(dfa));
@@ -628,6 +627,61 @@ void test_cuda_vmat_mul() {
         }
     }
 
+}
+
+
+void test_cupoly_mat_mul_fft_gpu_consistency() {
+    // Matrix dimensions and polynomial lengths
+    size_t m = 3, n = 3, k = 3;
+    size_t len_a = 5, len_b = 7, max_len_res = 20;
+
+    // Generate random input matrices
+    vector<u64> matrix_a(m * n * len_a);
+    vector<u64> matrix_b(n * k * len_b);
+    for (size_t i = 0; i < matrix_a.size(); ++i) {
+        matrix_a[i] = rand() % 1000;
+    }
+    for (size_t i = 0; i < matrix_b.size(); ++i) {
+        matrix_b[i] = rand() % 1000;
+    }
+
+    // Allocate device memory
+    u64 *d_a, *d_b, *d_result1, *d_result2;
+    CHECK_CUDA(cudaMalloc(&d_a, matrix_a.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&d_b, matrix_b.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&d_result1, m * k * max_len_res * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&d_result2, m * k * max_len_res * sizeof(u64)));
+
+    // Copy input matrices to device
+    CHECK_CUDA(cudaMemcpy(d_a, matrix_a.data(), matrix_a.size() * sizeof(u64), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_b, matrix_b.data(), matrix_b.size() * sizeof(u64), cudaMemcpyHostToDevice));
+
+    // Call the function twice with different output buffers
+    cupoly_mat_mul_fft_gpu(d_a, d_b, d_result1, m, n, k, len_a, len_b, 0, max_len_res);
+    cupoly_mat_mul_fft_gpu(d_a, d_b, d_result2, m, n, k, len_a, len_b, 0, max_len_res);
+
+    // Copy results back to host
+    vector<u64> result1(m * k * max_len_res);
+    vector<u64> result2(m * k * max_len_res);
+    CHECK_CUDA(cudaMemcpy(result1.data(), d_result1, result1.size() * sizeof(u64), cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy(result2.data(), d_result2, result2.size() * sizeof(u64), cudaMemcpyDeviceToHost));
+
+    // Verify that both results are identical
+    for (size_t i = 0; i < result1.size(); ++i) {
+        if (result1[i] != result2[i]) {
+            std::cerr << "Mismatch at index " << i << ": result1=" << result1[i]
+                      << ", result2=" << result2[i] << std::endl;
+            assert(false);
+        }
+    }
+
+    std::cout << "Test passed: Both output buffers have the same content." << std::endl;
+
+    // Free device memory
+    CHECK_CUDA(cudaFree(d_a));
+    CHECK_CUDA(cudaFree(d_b));
+    CHECK_CUDA(cudaFree(d_result1));
+    CHECK_CUDA(cudaFree(d_result2));
 }
 
 #endif // CUPOLY_MAT_MUL_H

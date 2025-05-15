@@ -150,36 +150,51 @@ std::vector<int64_t> _cuPM_Basis(
         }
         CHECK_CUDA(cudaMemcpy(dRes, res.data(), res.size() * sizeof(u64), cudaMemcpyHostToDevice));
         
-        cout << "_cuPM (" <<d<<") in:" << endl;
-        display_cuda_buffer(dG, n * (n/2) * d, seqprime, 32);
-        cout << "_cuPM (" <<d<<") out:" << endl;
-        display_cuda_buffer(dRes, n * n * (d+1), seqprime, 32);
+        // cout << "_cuPM (" <<d<<") in:" << endl;
+        // display_cuda_buffer(dG, n * (n/2) * d, seqprime, 32);
+        // cout << "_cuPM (" <<d<<") out:" << endl;
+        // display_cuda_buffer(dRes, n * n * (d+1), seqprime, 32);
         return mumu;
     } else {
         u64* dout1;
         CHECK_CUDA(cudaMalloc(&dout1, n * n * (d/2+1) * sizeof(u64)));
         auto mumu = _cuPM_Basis(dG, dout1, n, d / 2, delta, seqprime, progress);
 
-        u64 *dmul1, *dmul2, *dmul3;
+        u64 *dmul1; // *dmul2, *dmul3;
         CHECK_CUDA(cudaMalloc(&dmul1, n * (n/2) * (d/2) * sizeof(u64)));
-        CHECK_CUDA(cudaMalloc(&dmul2, 2*n * n * (d/2) * sizeof(u64)));
-        CHECK_CUDA(cudaMalloc(&dmul3, 2*n * n * (d/2) * sizeof(u64)));
+        // CHECK_CUDA(cudaMalloc(&dmul2, 2*n * n * (d+1000) * sizeof(u64)));
+        // CHECK_CUDA(cudaMalloc(&dmul3, 2*n * n * (d+1000) * sizeof(u64)));
         // auto GG = poly_mat_mul_fft_red(MM, G, seqprime, 0, d + 1);
         cupoly_mat_mul_fft_gpu(dout1, dG, dmul1, n, n, n/2, d/2+1, d, d/2, d/2);
-        cupoly_mat_mul_fft_gpu(dout1, dG, dmul2, n, n, n/2, d/2+1, d, 0, d+d/2);
-        cupoly_mat_mul_fft_gpu(dout1, dG, dmul3, n, n, n/2, d/2+1, d, 0, d+d/2);
+
         modp_buffer(dmul1, n * (n/2) * (d/2), seqprime);
-        modp_buffer(dmul2, 2*n * n * (d/2), seqprime);
-        modp_buffer(dmul3, 2*n * n * (d/2), seqprime);
-        if (d==4) {
-            cout << "cu d=4 extra" << endl;
-            display_cuda_buffer(dmul1, n * (n/2) * (d/2), seqprime, 32);
-            display_cuda_buffer(dmul2, n * (n/2) * (d+d/2), seqprime, 64);
-            display_cuda_buffer(dmul3, n * (n/2) * (d+d/2), seqprime, 64);
-        }
-        // shift_trunc_in(GG, d / 2, d / 2);
-        CHECK_CUDA(cudaFree(dmul2));
-        CHECK_CUDA(cudaFree(dmul3));
+
+        // if (d==4) {
+        //     cout << "cu d=4 extra" << endl;
+        //     // cudaMemset(dmul1, 0, n * (n/2) * (d/2) * sizeof(u64));
+        //     cudaMemset(dmul2, 0, 2*n * n * (d) * sizeof(u64));
+        //     cudaMemset(dmul3, 0, 2*n * n * (d) * sizeof(u64));
+        //     // display_cuda_buffer(dout1, n * n * (d/2+1), seqprime, 60);
+        //     // display_cuda_buffer(dG, n * (n/2) * d, seqprime, 60);
+        //     // display_cuda_buffer(dmul2, n * (n/2) * (d/2), seqprime, 32);
+        //     // display_cuda_buffer(dmul3, n * (n/2) * (d/2), seqprime, 32);
+        //     cupoly_mat_mul_fft_gpu(dout1, dG, dmul2, n, n, n/2, d/2+1, d, 0, d+d/2);
+        //     // display_cuda_buffer(dout1, n * n * (d/2+1), seqprime, 60);
+        //     // display_cuda_buffer(dG, n * (n/2) * d, seqprime, 60);
+        //     display_cuda_buffer(dmul2, n * (n/2) * (d/2), seqprime, 32);
+        //     cupoly_mat_mul_fft_gpu(dout1, dG, dmul3, n, n, n/2, d/2+1, d, 0, d+d/2);
+        //     display_cuda_buffer(dmul2, n * (n/2) * (d/2), seqprime, 32);
+
+        //     modp_buffer(dmul2, 2*n * n * (d), seqprime);
+        //     modp_buffer(dmul3, 2*n * n * (d), seqprime);
+
+        //     display_cuda_buffer(dmul1, n * (n/2) * (d/2), seqprime, 32);
+        //     display_cuda_buffer(dmul2, n * (n/2) * (d+d/2), seqprime, 64);
+        //     display_cuda_buffer(dmul3, n * (n/2) * (d+d/2), seqprime, 64);
+        // }
+        // // shift_trunc_in(GG, d / 2, d / 2);
+        // CHECK_CUDA(cudaFree(dmul2));
+        // CHECK_CUDA(cudaFree(dmul3));
 
         u64* dout2;
         CHECK_CUDA(cudaMalloc(&dout2, n * n * (d/2+1) * sizeof(u64)));
@@ -193,10 +208,10 @@ std::vector<int64_t> _cuPM_Basis(
         CHECK_CUDA(cudaFree(dmul1));
         CHECK_CUDA(cudaFree(dout2));
         
-        cout << "_cuPM (" <<d<<") in:" << endl;
-        display_cuda_buffer(dG, n * (n/2) * d, seqprime, 32);
-        cout << "_cuPM (" <<d<<") out:" << endl;
-        display_cuda_buffer(dRes, n * n * (d+1), seqprime, 32);
+        // cout << "_cuPM (" <<d<<") in:" << endl;
+        // display_cuda_buffer(dG, n * (n/2) * d, seqprime, 32);
+        // cout << "_cuPM (" <<d<<") out:" << endl;
+        // display_cuda_buffer(dRes, n * n * (d+1), seqprime, 32);
         return mumumu;
         // return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
     }
@@ -257,7 +272,7 @@ std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> cuPM
     // output buffer
     std::vector<u64> M(2 * n * 2 * n * (d+1), 0);
     u64 *dM;
-    CHECK_CUDA(cudaMalloc(&dM, M.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&dM, M.size()*100 * sizeof(u64)));
 
     ProgressData progress(d);
     auto mu = _cuPM_Basis(dG, dM, 2*n, d, delta, static_cast<u64>(seqprime), progress);

@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
     
     if (runtests) {
         cout << "Running tests..." << endl;
+        test_cupoly_mat_mul_fft_gpu_consistency();
 
         // test_cuda_vmat_mul();
         test_cuPMBasis();

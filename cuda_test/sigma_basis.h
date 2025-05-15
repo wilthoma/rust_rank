@@ -186,10 +186,10 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> _PM_Ba
     } else if (d == 1) {
         progress.progress_tick();
         auto [MM, mumu] = M_Basis(G, delta, seqprime);
-        cout << "_PM (" <<d<<") in:" << endl;
-        display_vecvecvec<S>(G, seqprime, 32);
-        cout << "_PM (" <<d<<") out:" << endl;
-        display_vecvecvec<S>(MM, seqprime, 32);
+        // cout << "_PM (" <<d<<") in:" << endl;
+        // display_vecvecvec<S>(G, seqprime, 32);
+        // cout << "_PM (" <<d<<") out:" << endl;
+        // display_vecvecvec<S>(MM, seqprime, 32);
         return {MM, mumu};
     } else {
         auto [MM, mumu] = _PM_Basis(G, d / 2, delta, seqprime, progress);
@@ -201,10 +201,10 @@ std::pair<std::vector<std::vector<std::vector<S>>>, std::vector<int64_t>> _PM_Ba
         auto rret = poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size());
         // return {poly_mat_mul_fft_red(MMM, MM, seqprime, 0, MM[0][0].size()), mumumu};
 
-        cout << "_PM (" <<d<<") in:" << endl;
-        display_vecvecvec<S>(G, seqprime, 32);
-        cout << "_PM (" <<d<<") out:" << endl;
-        display_vecvecvec<S>(rret, seqprime, 32);
+        // cout << "_PM (" <<d<<") in:" << endl;
+        // display_vecvecvec<S>(G, seqprime, 32);
+        // cout << "_PM (" <<d<<") out:" << endl;
+        // display_vecvecvec<S>(rret, seqprime, 32);
 
         return {rret, mumumu};
     }
