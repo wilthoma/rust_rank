@@ -69,20 +69,20 @@ void shift_trunc_in(std::vector<std::vector<std::vector<S>>>& mat, std::size_t s
 struct ProgressData {
     std::size_t total;
     std::size_t current;
-    std::chrono::time_point<std::chrono::steady_clock> start_time;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 
     ProgressData(std::size_t total)
-        : total(total), current(0), start_time(std::chrono::steady_clock::now()) {}
+        : total(total), current(0), start_time(std::chrono::high_resolution_clock::now()) {}
 
-    void progress_tick() {
+    void progress_tick(long long other = 0) {
         ++current;
         if (current % 100 == 0) {
-            auto elapsed_time = std::chrono::steady_clock::now() - start_time;
+            auto elapsed_time = std::chrono::high_resolution_clock::now() - start_time;
             double percent = (static_cast<double>(current) / total) * 100.0;
             std::cout << "\rSigma basis progress: " << std::fixed << std::setprecision(2)
                       << percent << "% (" << current << " of " << total
                       << "), Time elapsed: " << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count()
-                      << "s    " << std::flush;
+                      << "s    ("<<other<<")" << std::flush;
         }
     }
 };

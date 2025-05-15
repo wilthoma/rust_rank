@@ -684,4 +684,79 @@ void test_cupoly_mat_mul_fft_gpu_consistency() {
     CHECK_CUDA(cudaFree(d_result2));
 }
 
+
+void benchmark_cupoly_mat_mul_fft_gpu_vs_cpu() {
+    size_t m = 8, n = 8, k = 8;
+    size_t len_a = 50, len_b = 50, max_len_res = len_a + len_b - 1;
+
+    // Generate random input matrices
+    vector<u64> matrix_a(m * n * len_a);
+    vector<u64> matrix_b(n * k * len_b);
+    for (size_t i = 0; i < matrix_a.size(); ++i) {
+        matrix_a[i] = rand() % 1000;
+    }
+    for (size_t i = 0; i < matrix_b.size(); ++i) {
+        matrix_b[i] = rand() % 1000;
+    }
+
+    // Prepare CPU 3D matrices
+    vector<vector<vector<u64>>> cpu_a(m, vector<vector<u64>>(n, vector<u64>(len_a)));
+    vector<vector<vector<u64>>> cpu_b(n, vector<vector<u64>>(k, vector<u64>(len_b)));
+    for (size_t i = 0; i < m; ++i)
+        for (size_t j = 0; j < n; ++j)
+            for (size_t l = 0; l < len_a; ++l)
+                cpu_a[i][j][l] = matrix_a[l*m*n + i*n + j];
+    for (size_t i = 0; i < n; ++i)
+        for (size_t j = 0; j < k; ++j)
+            for (size_t l = 0; l < len_b; ++l)
+                cpu_b[i][j][l] = matrix_b[l*n*k + i*k + j];
+
+    // Allocate device memory
+    u64 *d_a, *d_b, *d_result;
+    CHECK_CUDA(cudaMalloc(&d_a, matrix_a.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&d_b, matrix_b.size() * sizeof(u64)));
+    CHECK_CUDA(cudaMalloc(&d_result, m * k * max_len_res * sizeof(u64)));
+    CHECK_CUDA(cudaMemcpy(d_a, matrix_a.data(), matrix_a.size() * sizeof(u64), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_b, matrix_b.data(), matrix_b.size() * sizeof(u64), cudaMemcpyHostToDevice));
+
+    // Benchmark GPU
+    cudaDeviceSynchronize();
+    auto start_gpu = std::chrono::high_resolution_clock::now();
+    cupoly_mat_mul_fft_gpu(d_a, d_b, d_result, m, n, k, len_a, len_b, 0, max_len_res);
+    cudaDeviceSynchronize();
+    auto end_gpu = std::chrono::high_resolution_clock::now();
+    double gpu_time = std::chrono::duration<double>(end_gpu - start_gpu).count();
+
+    // Copy result back to host
+    vector<u64> gpu_result(m * k * max_len_res);
+    CHECK_CUDA(cudaMemcpy(gpu_result.data(), d_result, gpu_result.size() * sizeof(u64), cudaMemcpyDeviceToHost));
+
+    // Benchmark CPU
+    auto start_cpu = std::chrono::high_resolution_clock::now();
+    auto cpu_result = poly_mat_mul_fft(cpu_a, cpu_b, 0, len_b);
+    auto end_cpu = std::chrono::high_resolution_clock::now();
+    double cpu_time = std::chrono::duration<double>(end_cpu - start_cpu).count();
+
+    // Compare results (optional, can be commented out for large sizes)
+    // bool ok = true;
+    // for (size_t i = 0; i < m && ok; ++i)
+    //     for (size_t j = 0; j < k && ok; ++j)
+    //         for (size_t l = 0; l < max_len_res && ok; ++l)
+    //             if (cpu_result[i][j][l] != gpu_result[l*m*k + i*k + j]) {
+    //                 std::cerr << "Mismatch at [" << i << "][" << j << "][" << l << "]: cpu=" << cpu_result[i][j][l]
+    //                           << ", gpu=" << gpu_result[l*m*k + i*k + j] << std::endl;
+    //                 ok = false;
+    //             }
+    // if (ok)
+    //     std::cout << "Results match!" << std::endl;
+
+    std::cout << "GPU time: " << gpu_time << " s" << std::endl;
+    std::cout << "CPU time: " << cpu_time << " s" << std::endl;
+
+    CHECK_CUDA(cudaFree(d_a));
+    CHECK_CUDA(cudaFree(d_b));
+    CHECK_CUDA(cudaFree(d_result));
+}
+
+
 #endif // CUPOLY_MAT_MUL_H

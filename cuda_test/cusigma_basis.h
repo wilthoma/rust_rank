@@ -11,6 +11,24 @@
 #include "sigma_basis.h"
 
 
+// silent versions without cuda synchronize
+auto stic_start_time= std::chrono::high_resolution_clock::now();
+inline void stic() 
+{
+    // Start the timer
+    stic_start_time = std::chrono::high_resolution_clock::now();
+}
+inline long long stoc() 
+{
+    // Stop the timer
+    auto end_time = std::chrono::high_resolution_clock::now();
+    // Calculate the elapsed time in milliseconds
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - stic_start_time).count();
+    return elapsed_time;
+}
+long long total_1_elapsed = 0;
+long long total_2_elapsed = 0;
+long long total_3_elapsed = 0;
 
 
 template<typename T>
@@ -129,7 +147,8 @@ std::vector<int64_t> _cuPM_Basis(
         CHECK_CUDA(cudaMemcpy(dRes, res.data(), res.size() * sizeof(u64), cudaMemcpyHostToDevice));
         return delta;
     } else if (d == 1) {
-        progress.progress_tick();
+        progress.progress_tick(total_3_elapsed);
+        stic();
         // extract leading coefficient
         std::vector<u64> A(n * n/2, 0);
         CHECK_CUDA(cudaMemcpy(A.data(), dG, A.size() * sizeof(u64), cudaMemcpyDeviceToHost));
@@ -149,7 +168,7 @@ std::vector<int64_t> _cuPM_Basis(
             }
         }
         CHECK_CUDA(cudaMemcpy(dRes, res.data(), res.size() * sizeof(u64), cudaMemcpyHostToDevice));
-        
+        total_1_elapsed += stoc();
         // cout << "_cuPM (" <<d<<") in:" << endl;
         // display_cuda_buffer(dG, n * (n/2) * d, seqprime, 32);
         // cout << "_cuPM (" <<d<<") out:" << endl;
@@ -160,14 +179,19 @@ std::vector<int64_t> _cuPM_Basis(
         CHECK_CUDA(cudaMalloc(&dout1, n * n * (d/2+1) * sizeof(u64)));
         auto mumu = _cuPM_Basis(dG, dout1, n, d / 2, delta, seqprime, progress);
 
+        
         u64 *dmul1; // *dmul2, *dmul3;
         CHECK_CUDA(cudaMalloc(&dmul1, n * (n/2) * (d/2) * sizeof(u64)));
         // CHECK_CUDA(cudaMalloc(&dmul2, 2*n * n * (d+1000) * sizeof(u64)));
         // CHECK_CUDA(cudaMalloc(&dmul3, 2*n * n * (d+1000) * sizeof(u64)));
         // auto GG = poly_mat_mul_fft_red(MM, G, seqprime, 0, d + 1);
+        stic();
         cupoly_mat_mul_fft_gpu(dout1, dG, dmul1, n, n, n/2, d/2+1, d, d/2, d/2);
+        total_3_elapsed += stoc();
 
         modp_buffer(dmul1, n * (n/2) * (d/2), seqprime);
+
+        
 
         // if (d==4) {
         //     cout << "cu d=4 extra" << endl;
@@ -198,10 +222,11 @@ std::vector<int64_t> _cuPM_Basis(
 
         u64* dout2;
         CHECK_CUDA(cudaMalloc(&dout2, n * n * (d/2+1) * sizeof(u64)));
-
+        
         auto mumumu = _cuPM_Basis(dmul1, dout2, n, d / 2, mumu, seqprime, progress);
-
+        stic();
         cupoly_mat_mul_fft_gpu(dout2, dout1, dRes, n, n, n, d/2+1, d/2+1, 0, d+1);
+        total_3_elapsed += stoc();
         modp_buffer(dRes, n * n * (d+1), seqprime);
 
         CHECK_CUDA(cudaFree(dout1));
@@ -275,6 +300,7 @@ std::pair<std::vector<std::vector<std::vector<u64>>>, std::vector<int64_t>> cuPM
     CHECK_CUDA(cudaMalloc(&dM, M.size()*100 * sizeof(u64)));
 
     ProgressData progress(d);
+    cout << "Buffers prepared, starting computation...." << endl;
     auto mu = _cuPM_Basis(dG, dM, 2*n, d, delta, static_cast<u64>(seqprime), progress);
 
     CHECK_CUDA(cudaMemcpy(M.data(), dM, M.size() * sizeof(u64), cudaMemcpyDeviceToHost));

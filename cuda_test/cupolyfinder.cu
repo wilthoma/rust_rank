@@ -31,6 +31,8 @@ int main(int argc, char** argv) {
     
     if (runtests) {
         cout << "Running tests..." << endl;
+        benchmark_cupoly_mat_mul_fft_gpu_vs_cpu();
+
         test_cupoly_mat_mul_fft_gpu_consistency();
 
         // test_cuda_vmat_mul();
