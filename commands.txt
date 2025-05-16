@@ -28,3 +28,20 @@ module load modules/EasyBuild && module load GCC/13.3.0 && cd prog/tmp3/rust_ran
 
 
 ./cuvseq_int /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri18_11.txt -v1 -N34000000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/odd_edges/contractD_tri18_11_gpu1.wdm -o -s8000 -d1
+
+
+./cuvseq_int /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri19_11.txt -v4 -N1700000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri19_11_gpu4.wdm -o -s8000 -d1
+
+./cuvseq_int_26 /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri19_11.txt -v4 -N1700000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri19_11_gpu4.wdm -o -s8000 -d1
+
+
+./cuvseq_int_26 /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri19_11.txt -v8 -N900000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri19_11_gpu8.wdm -o -s8000 -d1
+
+./cuvseq_int_26 /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri18_11.txt -v4 -N9000000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri18_11_gpu4.wdm -o -s8000 -d1
+
+./cuvseq_int_26 /r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri18_11.txt -v4 -N9000000 -f/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri18_11_gpu4.wdm -o -s8000 -d1
+
+
+scp wilthoma@ada-27:/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri18_11_gpu4.wdm .
+
+scp wilthoma@ada-27:/r/scratch/users/wilthoma/gh_data/data/ordinary_variants/even_edges/contractD_tri19_11_gpu8.wdm .

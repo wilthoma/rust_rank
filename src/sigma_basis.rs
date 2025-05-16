@@ -11,7 +11,7 @@ pub fn PM_Basis< S:NTTInteger+KaraMultiply, T: GoodInteger+Into<S>>(seq : &Vec<V
     let nn = seq.len();
     let mut n=0;
     let nlen = seq[0].len();
-    for i in 0..nn {
+    for i in 0..=nn {
         if i*(i+1)/2 == nn {
             n = i;
         }
