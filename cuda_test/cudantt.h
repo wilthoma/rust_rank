@@ -337,6 +337,15 @@ void ntt_cuda_colwise(std::vector<u64>& h_data, int n_cols, bool inverse = false
     cudaFree(d_twiddles);
 }
 
+std::map<std::pair<u64, u64>, u64*> twiddles_cache;
+
+void rrelease_twiddles_cache() {
+    for (auto& pair : twiddles_cache) {
+        cudaFree(pair.second);
+    }
+    twiddles_cache.clear();
+}
+
 // the data represents an n x nr_columns matrix, ntt operates column-wise
 // the data is assumed to be in row-major order
 void ntt_cuda_colwise_gpu(u64* d_data, int n_rows, int n_cols, bool inverse = false) {
@@ -354,34 +363,41 @@ void ntt_cuda_colwise_gpu(u64* d_data, int n_rows, int n_cols, bool inverse = fa
     //CHECK_CUDA(cudaMalloc(&d_data, nn * sizeof(u64)));
     //CHECK_CUDA(cudaMemcpy(d_data, h_data.data(), nn * sizeof(u64), cudaMemcpyHostToDevice));
 
-    CHECK_CUDA(cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64))); // max needed is n/2
+    // CHECK_CUDA(cudaMalloc(&d_twiddles, (n / 2) * sizeof(u64))); // max needed is n/2
 
     // Bit-reversal permutation
+    //CHECK_CUDA(cudaDeviceSynchronize());
+    //ptic();
     launch_bit_reverse_kernel_colwise(d_data, n, n_cols); 
+    //total_elapsed_bitrev += ptoc();
 
     // NTT stages
     for (u64 step = 1; step < n; step *= 2) {
         u64 m = step * 2;
         u64 wm = mod_pow(w, n / m);
 
-        // Compute twiddles for this stage
-        std::vector<u64> stage_twiddles(step);
-        stage_twiddles[0] = 1;
-        for (u64 j = 1; j < step; ++j)
-            stage_twiddles[j] = (u128)stage_twiddles[j - 1] * wm % p;
-
-        CHECK_CUDA(cudaMemcpy(d_twiddles, stage_twiddles.data(), step * sizeof(u64), cudaMemcpyHostToDevice));
+        // check if twiddles present in cache
+        auto it = twiddles_cache.find({step, w});
+        if (it != twiddles_cache.end()) {
+            d_twiddles = it->second;
+        } else {
+            // Compute twiddles for this stage
+            std::vector<u64> stage_twiddles(step);
+            stage_twiddles[0] = 1;
+            for (u64 j = 1; j < step; ++j)
+                stage_twiddles[j] = (u128)stage_twiddles[j - 1] * wm % p;
+            CHECK_CUDA(cudaMalloc(&d_twiddles, step * sizeof(u64)));
+            CHECK_CUDA(cudaMemcpy(d_twiddles, stage_twiddles.data(), step * sizeof(u64), cudaMemcpyHostToDevice));
+            twiddles_cache[{step, w}] = d_twiddles;
+        }
 
         // Launch one thread per butterfly group of size 2*step
         u64 threads_needed = n / (2 * step);
         dim3 blockDim(32, 16);
         dim3 gridDim((threads_needed + blockDim.x - 1) / blockDim.x,
                     (n_cols + blockDim.y - 1) / blockDim.y);
-        // u64 threads_needed = n / (2 * step);
-        // u64 blocks = (threads_needed + 255) / 256;
-        // ntt_stage_kernel<<<blocks, 256>>>(d_data, d_twiddles, step, n, p); //CUCHECK
-        ntt_stage_kernel_colwise<<<gridDim, blockDim>>>(d_data, d_twiddles, step, n, n_cols, p); //CUCHECK
-        CHECK_CUDA(cudaDeviceSynchronize());
+        ntt_stage_kernel_colwise<<<gridDim, blockDim>>>(d_data, d_twiddles, step, n, n_cols, p); CUCHECK
+        //CHECK_CUDA(cudaDeviceSynchronize());
     }
 
     // Scale by n⁻¹ in inverse
@@ -389,13 +405,13 @@ void ntt_cuda_colwise_gpu(u64* d_data, int n_rows, int n_cols, bool inverse = fa
     // if (false){
         u64 threads = (nn + 255) / 256;
         // std::cout << "scaling by " << inv_n<< std::endl;
-        scale_kernel<<<threads, 256>>>(d_data, inv_n, nn, p);// CUCHECK
-        CHECK_CUDA(cudaDeviceSynchronize());
+        scale_kernel<<<threads, 256>>>(d_data, inv_n, nn, p); CUCHECK
+        //CHECK_CUDA(cudaDeviceSynchronize());
     }
 
     // CHECK_CUDA(cudaMemcpy(h_data.data(), d_data, nn * sizeof(u64), cudaMemcpyDeviceToHost));
     // cudaFree(d_data);
-    cudaFree(d_twiddles);
+    //cudaFree(d_twiddles);
 }
 
 void test_ntt_cuda_colwise_inv() {

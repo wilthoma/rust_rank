@@ -280,14 +280,19 @@ void cupoly_mat_mul_fft_gpu(u64* da, u64* db, u64* dresult, size_t m, size_t n, 
     CHECK_CUDA(cudaMemcpy(dfa, da, m * n * len_a * sizeof(u64), cudaMemcpyDeviceToDevice));
     CHECK_CUDA(cudaMemcpy(dfb, db, n * k * len_b * sizeof(u64), cudaMemcpyDeviceToDevice));
 
+    ntic();
     ntt_cuda_colwise_gpu(dfa, nlenres_adj, m*n, false);
     ntt_cuda_colwise_gpu(dfb, nlenres_adj, n*k, false);
-
+    total_elapsed_ntt += ntoc();
 
     // CHECK_CUDA(cudaMemset(dresult, 0, m*k*nlenres_adj * sizeof(u64)));
+    ntic();
     cuda_vmatmul(dfa, dfb, dfresult, m, n, k, nlenres_adj);
+    total_elapsed_matmul += ntoc();
 
+    ntic();
     ntt_cuda_colwise_gpu(dfresult, nlenres_adj, m*k, true);
+    total_elapsed_ntt += ntoc();
 
     size_t actual_len_res = min(max_len_res, nlenres-res_start_deg);
 

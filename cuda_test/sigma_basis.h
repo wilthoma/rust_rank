@@ -82,7 +82,7 @@ struct ProgressData {
             std::cout << "\rSigma basis progress: " << std::fixed << std::setprecision(2)
                       << percent << "% (" << current << " of " << total
                       << "), Time elapsed: " << std::chrono::duration_cast<std::chrono::seconds>(elapsed_time).count()
-                      << "s    ("<<other<<")" << std::flush;
+                      << "s    ("<<other<<", matmul: "<<total_elapsed_matmul<<", ntt: "<<total_elapsed_ntt<<", bitrev: "<<total_elapsed_bitrev<<")" << std::flush;
         }
     }
 };

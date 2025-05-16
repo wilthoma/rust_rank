@@ -582,7 +582,7 @@ fn main() {
     // convert seq to a vector of u64
     println!("Sequence computed, running Berlekamp-Massey...");
     // let useq: Vec<u64> = seq.iter().map(|&x| (if x>=0 {x} else {x+prime})  as u64).collect();
-    if num_v == 1 {
+    if num_v == 0 {
         let start_time = std::time::Instant::now();
         let bmres = block_berlekamp_massey(seq.clone(), num_v, num_v, prime );
         // let bmres: Vec<u64> = bubblemath::linear_recurrence::berlekamp_massey(&useq, prime as u64);

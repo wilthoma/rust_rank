@@ -16,6 +16,41 @@
 #include <bitset>
 
 
+// silent versions without cuda synchronize
+auto ntic_start_time= std::chrono::high_resolution_clock::now();
+inline void ntic() 
+{
+    // Start the timer
+    ntic_start_time = std::chrono::high_resolution_clock::now();
+}
+inline long long ntoc() 
+{
+    // Stop the timer
+    auto end_time = std::chrono::high_resolution_clock::now();
+    // Calculate the elapsed time in milliseconds
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - ntic_start_time).count();
+    return elapsed_time;
+}
+// silent versions without cuda synchronize
+auto ptic_start_time= std::chrono::high_resolution_clock::now();
+inline void ptic() 
+{
+    // Start the timer
+    ptic_start_time = std::chrono::high_resolution_clock::now();
+}
+inline long long ptoc() 
+{
+    // Stop the timer
+    auto end_time = std::chrono::high_resolution_clock::now();
+    // Calculate the elapsed time in milliseconds
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - ptic_start_time).count();
+    return elapsed_time;
+}
+
+long long total_elapsed_ntt = 0;
+long long total_elapsed_matmul = 0;
+
+long long total_elapsed_bitrev = 0;
 
 template <typename T>
 inline T PRIME() {

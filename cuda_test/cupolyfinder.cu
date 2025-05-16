@@ -24,11 +24,17 @@ int main(int argc, char** argv) {
     CLI::App app{"CUDA PolyFinder"};
     string wdm_filename;
     bool runtests = false;
+    int cuda_device_id = 0;
 
     app.add_option("filename", wdm_filename, "WDM file to load")->required();
+    app.add_option("-d,--d", cuda_device_id, "Selects a CUDA device to use. Default is 0.")
+        ->default_val(0);
+    
     app.add_flag("-t,--test", runtests, "Run tests");
     CLI11_PARSE(app, argc, argv);
     
+    CHECK_CUDA(cudaSetDevice(cuda_device_id));
+
     if (runtests) {
         cout << "Running tests..." << endl;
         benchmark_cupoly_mat_mul_fft_gpu_vs_cpu();
@@ -87,5 +93,6 @@ int main(int argc, char** argv) {
     analyze_pm_basis<uint64_t>(pmb, del, p);
     
 
+    rrelease_twiddles_cache();
     return 0;
 }
