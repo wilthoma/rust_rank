@@ -245,7 +245,7 @@ struct CooMatrix {
             exit(-1);
         }
     
-        string dummy;
+        std::string dummy;
         int numRows, numCols;
         file >> numRows >> numCols >> dummy;
     
