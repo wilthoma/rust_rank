@@ -588,6 +588,12 @@ int main(int argc, char* argv[]) {
 
     if (max_nlen == 0) {
         max_nlen = 2 * min(cooA.numRows, cooA.numCols)/num_v;
+        // increase to next higher power of two
+        size_t newmax_nlen = 1;
+        while (newmax_nlen < max_nlen) {
+            newmax_nlen *= 2;
+        }
+        max_nlen = newmax_nlen;
     }
 
     //auto convertStart = std::chrono::high_resolution_clock::now();
