@@ -245,9 +245,9 @@ struct CooMatrix {
             exit(-1);
         }
     
-        char arbitraryChar;
+        string dummy;
         int numRows, numCols;
-        file >> numRows >> numCols >> arbitraryChar;
+        file >> numRows >> numCols >> dummy;
     
         std::vector<int> tempRowIndices;
         std::vector<int> tempColIndices;
