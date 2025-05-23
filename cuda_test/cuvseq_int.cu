@@ -593,7 +593,7 @@ int main(int argc, char* argv[]) {
         while (newmax_nlen < max_nlen) {
             newmax_nlen *= 2;
         }
-        max_nlen = newmax_nlen;
+        max_nlen = newmax_nlen + 10;
     }
 
     //auto convertStart = std::chrono::high_resolution_clock::now();
